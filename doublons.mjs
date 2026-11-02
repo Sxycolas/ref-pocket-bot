@@ -53,11 +53,11 @@ for (const r of await fetchAll(() => sb.from("card_instances").select("card_id,h
   m.set(r.card_id, t);
 }
 
-// Doublons = au moins 2 exemplaires. On trie par rareté puis par nombre décroissant.
+// Doublons = au moins 2 exemplaires. On trie par rareté puis par identifiant..
 const dups = [...m.entries()]
   .filter(([, t]) => t.total >= 2)
   .map(([id, t]) => ({ id, ...t, name: cards[id]?.name || id, r: cards[id]?.rarity || "C", n: cards[id]?.n ?? 0 }))
-  .sort((a, b) => ORDER.indexOf(a.r) - ORDER.indexOf(b.r) || b.total - a.total || a.n - b.n);
+  .sort((a, b) => ORDER.indexOf(a.r) - ORDER.indexOf(b.r) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
 
 const totalDup = dups.reduce((s, d) => s + (d.total - 1), 0);
 const totalHolo = dups.reduce((s, d) => s + d.holo, 0);
