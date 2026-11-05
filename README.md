@@ -9,7 +9,8 @@
 Petits scripts d'automatisation pour **Ref Pocket**, le jeu de cartes à collectionner.
 Chaque script se connecte à **ton** compte (via l'API Supabase du jeu, exactement comme
 l'appli) et fait une tâche : ouvrir les boosters, améliorer les cartes, lister ce
-qui te manque, lister tes doublons, auditer ce que la base expose.
+qui te manque, lister tes doublons, vendre tes doublons inutiles, auditer ce que la base
+expose.
 
 > ⚠️ Ces scripts agissent sur **ton** compte avec **tes** identifiants. Ils
 > n'utilisent que les fonctions publiques du jeu (mêmes droits qu'un joueur normal
@@ -37,9 +38,10 @@ Dans tout ce README, remplace `<TON-COMPTE>` par ton nom d'utilisateur GitHub.
 | Script | Commande | Ce qu'il fait | Écrit |
 |---|---|---|---|
 | `bot.mjs` | `npm run bot` | Ouvre les boosters disponibles | — |
-| `ameliore-cartes.mjs` | `npm run ameliore` | Améliore toutes les cartes qui peuvent l'être, et explique pourquoi les autres ne le peuvent pas | `ameliorations.md` |
+| `ameliore-cartes.mjs` | `npm run ameliore` | Améliore les cartes qui peuvent l'être, dans les raretés choisies, et explique pourquoi les autres ne le peuvent pas | `ameliorations.md` |
 | `cartes-manquantes.mjs` | `npm run manquantes` | Liste les cartes du catalogue que tu n'as pas | `cartes-manquantes.md` |
 | `doublons.mjs` | `npm run doublons` | Liste toutes tes cartes en plusieurs exemplaires (total, holos, simples) | `doublons.md` |
+| `vendre.mjs` | `npm run vendre` | Met en vente à prix réduit les holos en double et les doublons des cartes au niveau max (voir *Vendre les doublons inutiles*) | `ventes.md` |
 | `profils.mjs` | `npm run profils` | Audit : ce que la base laisse voir des profils des autres joueurs | `profils.json` |
 
 ## Exécution sur GitHub Actions
@@ -56,6 +58,7 @@ résumé du run et se télécharge en artefact.
 | Amélioration des cartes | `ameliore.yml` |
 | Cartes manquantes | `cartes-manquantes.yml` |
 | Cartes en doublon | `doublons.yml` |
+| Vente des doublons inutiles | `vendre.yml` |
 
 ### 1. Activer les Actions sur ton fork
 
@@ -126,6 +129,7 @@ Une réponse **HTTP 204** = le workflow a bien été lancé (va voir l'onglet *A
 | `booster.yml` | toutes les heures (les boosters se rechargent avec le temps) |
 | `ameliore.yml` | 1×/jour (ou à la main) |
 | `doublons.yml` / `cartes-manquantes.yml` | quand tu veux un rapport à jour |
+| `vendre.yml` | 1×/jour (ou à la main) |
 
 ## Utilisation en local
 
@@ -153,3 +157,50 @@ Si tu préfères lancer les scripts depuis ta machine :
    npm run doublons
    npm run ameliore
    ```
+
+## Choisir les raretés à améliorer
+
+Par défaut, `npm run ameliore` traite toutes les raretés. Pour n'en traiter que certaines :
+
+- **Sur GitHub Actions** : décoche les raretés à ignorer dans le formulaire « Run workflow ».
+- **En local** : `npm run ameliore -- --raretes=L,E` (`L` Légendaire, `E` Épique, `R` Rare,
+  `C` Commune).
+- **Avec cron-job.org** : ajoute les raretés à ignorer dans le corps de la requête, par exemple
+  `{"ref":"main","inputs":{"communes":"false"}}`.
+
+## Vendre les doublons inutiles
+
+`npm run vendre` met en vente sur le marché du jeu les exemplaires qui ne te servent plus :
+
+- **Les holos en double** : 1 holo est gardée par carte, car elle reste utile en duel (Éclat
+  holo : +3 dégâts à la première attaque). Une carte avec 1 holo et des exemplaires normaux
+  n'est donc pas touchée.
+- **Les cartes au niveau maximum (5)** : tout ce qui dépasse 2 exemplaires, car elles ne
+  peuvent plus monter.
+
+Comment ça se passe :
+
+- **Prix** : le prix de référence du jeu moins 20 %, sans descendre sous la valeur de défausse.
+  Référence d'une normale : Commune 20 K, Rare 60 K, Épique 200 K, Légendaire 800 K (× 3 pour
+  une holo).
+- **Une annonce à la fois par carte**, pour varier les offres. Quand elle est vendue, relance
+  le script pour mettre en vente l'exemplaire suivant.
+- **Tu peux le relancer** : ce qui est déjà en vente ou dans un échange n'est pas touché.
+
+```bash
+npm run vendre -- --dry          # affiche ce qui serait vendu, sans rien faire
+npm run vendre                   # met en vente pour de vrai
+npm run vendre -- --remise=40    # change la remise (entre 1 et 90 %)
+npm run vendre -- --retirer            # retire toutes tes annonces ouvertes
+npm run vendre -- --retirer=141,176    # retire seulement ces numéros de carte
+npm run vendre -- --retirer --dry      # affiche ce qui serait retiré, sans rien faire
+```
+
+Sur GitHub Actions, le formulaire « Run workflow » de `vendre.yml` propose les mêmes choix :
+- **action** : `vendre` (par défaut) ou `retirer` ;
+- **cartes** : pour `retirer`, les numéros séparés par des virgules (vide = toutes les annonces).
+
+> ⚠️ Une carte en vente peut être achetée à tout moment par un autre joueur, et seule une annonce
+> encore ouverte peut être retirée. `--retirer` sans numéros retire **toutes** tes annonces, même
+> celles posées à la main dans l'appli (onglet *Marché*, *Mes ventes*). Une carte retirée mais encore
+> en surplus repartira en vente au prochain `npm run vendre` : pense à couper le cron si tu en as un.

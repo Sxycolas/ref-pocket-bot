@@ -1,6 +1,23 @@
 name: Amélioration des cartes
 on:
   workflow_dispatch:
+    inputs:
+      legendaires:
+        description: "Améliorer les légendaires"
+        type: boolean
+        default: true
+      epiques:
+        description: "Améliorer les épiques"
+        type: boolean
+        default: true
+      rares:
+        description: "Améliorer les rares"
+        type: boolean
+        default: true
+      communes:
+        description: "Améliorer les communes"
+        type: boolean
+        default: true
 
 jobs:
   ameliore:
@@ -14,10 +31,19 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run ameliore
+      - run: |
+          raretes=""
+          for r in L E R C; do
+            if [ "${!r}" = "true" ]; then raretes+="$r"; fi
+          done
+          npm run ameliore -- --raretes="$raretes"
         env:
           REF_EMAIL: ${{ secrets.REF_EMAIL }}
           REF_PASS: ${{ secrets.REF_PASS }}
+          L: ${{ inputs.legendaires }}
+          E: ${{ inputs.epiques }}
+          R: ${{ inputs.rares }}
+          C: ${{ inputs.communes }}
       - run: cat ameliorations.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:

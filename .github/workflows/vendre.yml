@@ -1,0 +1,57 @@
+name: Vente des doublons inutiles
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Mettre en vente, ou retirer des annonces"
+        type: choice
+        options:
+          - vendre
+          - retirer
+        default: vendre
+      remise:
+        description: "Vendre : remise en % par rapport au prix de référence"
+        default: "20"
+      cartes:
+        description: "Retirer : numéros de carte séparés par des virgules (vide = toutes les annonces)"
+        default: ""
+      dry:
+        description: "Test à blanc : ne rien modifier"
+        type: boolean
+        default: false
+
+jobs:
+  vendre:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: |
+          args=()
+          if [ "$DRY" = "true" ]; then args+=(--dry); fi
+          if [ "$ACTION" = "retirer" ]; then
+            if [ -n "$CARTES" ]; then args+=("--retirer=$CARTES"); else args+=(--retirer); fi
+          else
+            args+=("--remise=$REMISE")
+          fi
+          npm run vendre -- "${args[@]}"
+        env:
+          REF_EMAIL: ${{ secrets.REF_EMAIL }}
+          REF_PASS: ${{ secrets.REF_PASS }}
+          ACTION: ${{ inputs.action }}
+          REMISE: ${{ inputs.remise || '20' }}
+          CARTES: ${{ inputs.cartes }}
+          DRY: ${{ inputs.dry }}
+      - run: cat ventes.md >> "$GITHUB_STEP_SUMMARY"
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ventes
+          path: ventes.md

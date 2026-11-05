@@ -12,6 +12,8 @@
 //
 //   REF_EMAIL=... REF_PASS=... node ameliore-cartes.mjs      -> améliore pour de vrai
 //   ... node ameliore-cartes.mjs --dry                       -> n'améliore rien, explique seulement
+//   ... node ameliore-cartes.mjs --raretes=L,E               -> seulement ces raretés (toutes par défaut) :
+//                                                               L Légendaire, E Épique, R Rare, C Commune
 //   npm run ameliore            (lit le .env en local ; secrets sur GitHub Actions)
 //
 // Écrit un compte rendu dans ameliorations.md (ce qui a été amélioré ET pourquoi
@@ -27,6 +29,10 @@ if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 
 const DRY = process.argv.includes("--dry");
 const MAX_PER_CARD = 30; // garde-fou : 1+2+...+30 = 465 doublons, hors de portée
+
+const raretesArg = process.argv.find((a) => a.startsWith("--raretes="));
+const RARETES = raretesArg ? raretesArg.slice("--raretes=".length).toUpperCase().replace(/[\s,]/g, "") : "LERC";
+if (!/^[LERC]+$/.test(RARETES)) throw new Error("--raretes attend au moins une rareté parmi L, E, R, C (ex. --raretes=L,E)");
 
 const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
@@ -65,9 +71,11 @@ for (const r of await fetchAll(() => sb.from("card_instances").select("card_id,h
 const examined = [...m.entries()]
   .filter(([, t]) => t.simple + t.holo + t.vente >= 2)
   .map(([id, t]) => ({ id, ...t, name: cards[id]?.name || id, r: cards[id]?.rarity || "C" }))
+  .filter((c) => RARETES.includes(c.r))
   .sort((a, b) => ORDER[a.r] - ORDER[b.r] || b.simple - a.simple);
 
-console.log(`${me.pseudo} : ${examined.length} carte(s) en plusieurs exemplaires examinée(s).${DRY ? "  (DRY-RUN : rien ne sera modifié)" : ""}`);
+const raretesTexte = ["L", "E", "R", "C"].filter((r) => RARETES.includes(r)).map((r) => RAR[r]).join(", ");
+console.log(`${me.pseudo} : ${examined.length} carte(s) en plusieurs exemplaires examinée(s) (${raretesTexte}).${DRY ? "  (DRY-RUN : rien ne sera modifié)" : ""}`);
 
 const upgraded = [];       // { name, r, levels, newLevel }
 const blockedHolo = [];    // 1 seul simple, bloqué parce que les holos ne comptent pas
@@ -105,7 +113,7 @@ for (const c of examined) {
 
 // ---------- Compte rendu ----------
 const stamp = new Date().toISOString();
-const L = [`# Améliorations pour ${me.pseudo}`, "", stamp, ""];
+const L = [`# Améliorations pour ${me.pseudo}`, "", stamp, "", `Raretés traitées : ${raretesTexte}.`, ""];
 const totalUp = upgraded.reduce((s, u) => s + u.levels.length, 0);
 
 if (DRY) L.push("DRY-RUN : aucune amélioration effectuée.", "");

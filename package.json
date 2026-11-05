@@ -8,6 +8,7 @@
     "ameliore": "node --env-file-if-exists=.env ameliore-cartes.mjs",
     "manquantes": "node --env-file-if-exists=.env cartes-manquantes.mjs",
     "doublons": "node --env-file-if-exists=.env doublons.mjs",
+    "vendre": "node --env-file-if-exists=.env vendre.mjs",
     "profils": "node --env-file-if-exists=.env profils.mjs"
   },
   "dependencies": {
