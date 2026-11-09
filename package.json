@@ -5,6 +5,9 @@
   },
   "scripts": {
     "bot": "node --env-file-if-exists=.env bot.mjs",
+    "compte": "node projet_secret/creer-compte.mjs",
+    "ouvrir": "node projet_secret/ouvrir.mjs",
+    "transferer": "node projet_secret/transferer.mjs",
     "ameliore": "node --env-file-if-exists=.env ameliore-cartes.mjs",
     "manquantes": "node --env-file-if-exists=.env cartes-manquantes.mjs",
     "doublons": "node --env-file-if-exists=.env doublons.mjs",

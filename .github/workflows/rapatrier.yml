@@ -1,0 +1,34 @@
+name: Rapatrier les comptes
+on:
+  workflow_dispatch:
+
+# Deux exécutions simultanées annuleraient mutuellement leurs échanges en cours
+concurrency: rapatrier
+
+jobs:
+  rapatrier:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      # Les logs de ce dépôt sont publics : chaque e-mail et mot de passe est masqué avant
+      # de lancer le script. Sans compte valide, on s'arrête : le script en créerait un nouveau.
+      - name: Préparer les comptes
+        shell: bash
+        run: |
+          umask 077
+          printf '%s' "$COMPTES" > projet_secret/compte-auto.json
+          [ "$(jq length projet_secret/compte-auto.json)" -gt 0 ] || { echo "Secret COMPTES_AUTO absent ou invalide."; exit 1; }
+          jq -r 'if type == "array" then .[] else . end | .email, .password' projet_secret/compte-auto.json |
+            while IFS= read -r valeur; do echo "::add-mask::$valeur"; done
+        env:
+          COMPTES: ${{ secrets.COMPTES_AUTO }}
+      # « n » : pas de nouveaux comptes, le script s'arrête après l'étape 1
+      - name: Duels et rapatriement
+        run: echo n | python3 -u projet_secret/projet_secret.py
