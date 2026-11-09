@@ -1,0 +1,59 @@
+name: Duels du jour contre le bot
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "abandon : le bot abandonne tout de suite ; jouer : les deux comptes jouent les coups"
+        type: choice
+        options:
+          - abandon
+          - jouer
+        default: abandon
+      nombre:
+        description: "Nombre maximum de duels (vide = tous les duels récompensés restants)"
+        default: ""
+      dry:
+        description: "Test à blanc : vérifier les comptes et les decks sans jouer"
+        type: boolean
+        default: false
+
+jobs:
+  duels:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      # Le bot perd une carte à chaque duel : on lui ouvre ses boosters avant la série.
+      - name: Boosters du bot
+        if: ${{ !inputs.dry }}
+        continue-on-error: true
+        run: node bot.mjs
+        env:
+          REF_EMAIL: ${{ secrets.BOT_EMAIL }}
+          REF_PASS: ${{ secrets.BOT_PASS }}
+      - run: |
+          args=("--mode=$MODE")
+          if [ -n "$NOMBRE" ]; then args+=("--nombre=$NOMBRE"); fi
+          if [ "$DRY" = "true" ]; then args+=(--dry); fi
+          npm run duels -- "${args[@]}"
+        env:
+          REF_EMAIL: ${{ secrets.REF_EMAIL }}
+          REF_PASS: ${{ secrets.REF_PASS }}
+          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+          BOT_PASS: ${{ secrets.BOT_PASS }}
+          MODE: ${{ inputs.mode || 'abandon' }}
+          NOMBRE: ${{ inputs.nombre }}
+          DRY: ${{ inputs.dry }}
+      - run: cat duels.md >> "$GITHUB_STEP_SUMMARY"
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: duels
+          path: duels.md

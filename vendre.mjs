@@ -1,4 +1,5 @@
-// Ref Pocket : met en vente, à prix réduit, les exemplaires qui ne te servent plus.
+// Ref Pocket : met en vente, à prix réduit, les exemplaires qui ne te servent plus,
+// baisse peu à peu le prix de ceux qui ne partent pas, puis les défausse.
 //
 // Ce qui est vendu :
 //   - les holos en double : on en garde 1 par carte, car il suffit d'en posséder une
@@ -18,9 +19,24 @@
 //     une holo), moins la remise, sans jamais descendre sous ce que rapporterait une
 //     défausse de la carte.
 //
-//   REF_EMAIL=... REF_PASS=... node vendre.mjs      -> met en vente pour de vrai
-//   ... node vendre.mjs --dry                       -> n'affiche que ce qui serait vendu
-//   ... node vendre.mjs --remise=40                 -> remise en % (20 par défaut)
+// Baisse progressive (à chaque lancement, avant de créer les nouvelles annonces) :
+//   - une annonce de surplus restée sans acheteur depuis --palier heures (24 par défaut)
+//     est retirée puis remise en vente --baisse % du prix de référence moins cher (10 par
+//     défaut) ;
+//   - dès que ce prix atteindrait la valeur de défausse, personne n'en veut et la vendre à
+//     ce prix ne rapporterait pas plus : elle est défaussée tout de suite, ainsi que les
+//     autres exemplaires en surplus du même genre (holo / normale) de cette carte. Pareil
+//     pour une carte dont le prix de départ tombe déjà sur la valeur de défausse (grosse
+//     remise). Avec --sans-defausse, rien n'est défaussé : elle reste en vente à ce prix ;
+//   - seules les annonces de surplus au prix de départ du script ou moins cher sont
+//     concernées : une annonce posée à la main plus cher, ou sur une carte qui n'est
+//     pas en surplus, n'est jamais touchée.
+//
+//   REF_EMAIL=... REF_PASS=... node vendre.mjs      -> met en vente / baisse / défausse
+//   ... node vendre.mjs --dry                       -> n'affiche que ce qui serait fait
+//   ... node vendre.mjs --remise=40                 -> remise de départ en % (20 par défaut)
+//   ... node vendre.mjs --baisse=15 --palier=12     -> baisse de 15 % toutes les 12 h
+//   ... node vendre.mjs --sans-defausse             -> ne défausse jamais rien
 //   ... node vendre.mjs --retirer                   -> retire toutes tes annonces ouvertes
 //   ... node vendre.mjs --retirer=141,176           -> retire seulement ces numéros de carte
 //   npm run vendre -- --dry     (lit le .env en local ; secrets sur GitHub Actions)
@@ -36,9 +52,16 @@ const { REF_EMAIL, REF_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 
 const DRY = process.argv.includes("--dry");
-const remiseArg = process.argv.find((a) => a.startsWith("--remise="));
-const REMISE = remiseArg ? Number(remiseArg.slice("--remise=".length)) : 20;
-if (!Number.isInteger(REMISE) || REMISE < 1 || REMISE > 90) throw new Error("--remise doit être un entier entre 1 et 90");
+const SANS_DEFAUSSE = process.argv.includes("--sans-defausse");
+const intArg = (nom, defaut, min, max) => {
+  const a = process.argv.find((x) => x.startsWith(`--${nom}=`));
+  const v = a ? Number(a.slice(nom.length + 3)) : defaut;
+  if (!Number.isInteger(v) || v < min || v > max) throw new Error(`--${nom} doit être un entier entre ${min} et ${max}`);
+  return v;
+};
+const REMISE = intArg("remise", 20, 1, 90);
+const BAISSE = intArg("baisse", 10, 1, 90);
+const PALIER_H = intArg("palier", 24, 1, 24 * 30);
 
 const retirerArg = process.argv.find((a) => a === "--retirer" || a.startsWith("--retirer="));
 const NUMEROS = retirerArg?.includes("=") ? retirerArg.slice("--retirer=".length).split(",").map((x) => x.trim()) : null;
@@ -47,6 +70,8 @@ if (NUMEROS && !NUMEROS.every((x) => /^\d+$/.test(x))) throw new Error("--retire
 const NIVEAU_MAX = 5; // LVL_MAX dans cartes.js du site
 const GARDER = 1; // exemplaires disponibles conservés sur une carte qui peut encore monter
 const GARDER_NIVEAU_MAX = 2; // ... et sur une carte au niveau maximum
+// Un cron quotidien ne tombe jamais pile à la même seconde : on tolère 10 % d'avance.
+const PALIER_MS = PALIER_H * 3600e3 * 0.9;
 
 const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
@@ -77,16 +102,18 @@ const RAR = {
   C: { name: "Communes", value: 20, discard: 5 },
 };
 const ORDER = ["L", "E", "R", "C"];
-const prixDe = (r, holo) => {
-  const m = holo ? 3 : 1;
-  return Math.max(RAR[r].discard * m, Math.round((RAR[r].value * m * (100 - REMISE)) / 100));
-};
+const mult = (holo) => (holo ? 3 : 1);
+const plancherDe = (r, holo) => RAR[r].discard * mult(holo);
+const prixDe = (r, holo) => Math.max(plancherDe(r, holo), Math.round((RAR[r].value * mult(holo) * (100 - REMISE)) / 100));
+const pasDe = (r, holo) => Math.max(1, Math.round((RAR[r].value * mult(holo) * BAISSE) / 100));
 
 const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n").order("id"))).map((c) => [c.id, c]));
+const mesAnnonces = () => fetchAll(() => sb.from("listings").select("id,price,created_at,instance_id,inst:card_instances(card_id,holo)").eq("seller", me.id).eq("status", "open").order("id"));
+const ligne = (signe, c, holo, suite) => `  ${signe} n°${String(c?.n ?? "?").padEnd(4)} ${(c?.name || "?").slice(0, 44).padEnd(44)} ${(holo ? "holo" : "normale").padEnd(8)} ${suite}`;
 
 // ---------- Mode --retirer : retire des annonces au lieu d'en créer ----------
 if (retirerArg) {
-  const annonces = await fetchAll(() => sb.from("listings").select("id,price,inst:card_instances(card_id,holo)").eq("seller", me.id).eq("status", "open").order("id"));
+  const annonces = await mesAnnonces();
   const visees = annonces
     .map((l) => ({ id: l.id, prix: l.price, holo: l.inst?.holo, carte: cards[l.inst?.card_id] }))
     .filter((l) => !NUMEROS || NUMEROS.includes(String(l.carte?.n)));
@@ -107,7 +134,7 @@ if (retirerArg) {
       }
     }
     retirees.push(l);
-    console.log(`  ${DRY ? "·" : "✓"} n°${String(l.carte?.n ?? "?").padEnd(4)} ${name.slice(0, 44).padEnd(44)} ${(l.holo ? "holo" : "normale").padEnd(8)} ${l.prix} K`);
+    console.log(ligne(DRY ? "·" : "✓", l.carte, l.holo, `${l.prix} K`));
   }
 
   const verbe = DRY ? "à retirer" : "retirée(s)";
@@ -134,6 +161,7 @@ if (retirerArg) {
 }
 
 const niveaux = Object.fromEntries((await fetchAll(() => sb.from("card_levels").select("card_id,level").eq("owner", me.id).order("card_id"))).map((l) => [l.card_id, l.level]));
+const estNiveauMax = (id) => (niveaux[id] || 0) >= NIVEAU_MAX;
 
 // Regroupe les exemplaires par carte (triés : on garde les plus anciens).
 const parCarte = new Map();
@@ -153,45 +181,148 @@ function choisir(t, niveauMax) {
   return null;
 }
 
+const echecs = []; // { name, message }
+const echec = (c, message) => {
+  echecs.push({ name: c?.name || "?", message });
+  console.error(`  ✗ ${c?.name || "?"} : ${message}`);
+};
+
+// ---------- Baisse progressive des annonces qui ne partent pas ----------
+const baissees = []; // { carte, holo, avant, apres }
+const defaussees = []; // { carte, holo, nombre, gain }
+const enAttente = []; // { carte, holo, prix, prochaine }
+
+// Défausse `premier` (un exemplaire qu'on vient de retirer de la vente, ou null), puis
+// les autres exemplaires en surplus du même genre (holo / normale) de cette carte.
+async function defausser(c, holo, t, premier) {
+  let nombre = 0, gain = 0;
+  const jeter = async (instance) => {
+    if (DRY) { gain += plancherDe(c.rarity, holo); nombre++; return true; }
+    const r = await sb.rpc("discard_card", { p_instance: instance });
+    if (r.error) { echec(c, `défausse : ${r.error.message}`); return false; }
+    gain += Number(r.data) || 0;
+    nombre++;
+    return true;
+  };
+  if (premier == null || (await jeter(premier))) {
+    for (let x; (x = choisir(t, estNiveauMax(c.id))) && x.holo === holo; ) {
+      if (!(await jeter(x.instance))) break;
+      (holo ? t.holos : t.simples).pop();
+    }
+  }
+  if (nombre) {
+    defaussees.push({ carte: c, holo, nombre, gain });
+    console.log(ligne(DRY ? "·" : "🗑", c, holo, `défaussée${nombre > 1 ? ` ×${nombre}` : ""} : +${gain} K`));
+  }
+}
+
+for (const l of await mesAnnonces()) {
+  const id = l.inst?.card_id, holo = !!l.inst?.holo, c = cards[id], t = parCarte.get(id);
+  if (!c || !t || !RAR[c.rarity]) continue;
+  // Annonce de surplus ? On la remet parmi les exemplaires disponibles et on regarde si
+  // le script l'aurait choisie (même genre holo / normale).
+  const avec = { holos: [...t.holos], simples: [...t.simples], enVente: t.enVente - 1 };
+  (holo ? avec.holos : avec.simples).push(l.instance_id);
+  const choix = choisir(avec, estNiveauMax(id));
+  if (!choix || choix.holo !== holo || l.price > prixDe(c.rarity, holo)) continue; // pas à nous de la toucher
+
+  const plancher = plancherDe(c.rarity, holo);
+  const auPlancher = l.price <= plancher;
+  if (auPlancher && SANS_DEFAUSSE) continue; // elle reste en vente au prix plancher
+
+  // Une annonce déjà au prix plancher se défausse tout de suite ; les autres attendent le palier.
+  const age = Date.now() - new Date(l.created_at).getTime();
+  if (!auPlancher && age < PALIER_MS) {
+    enAttente.push({ carte: c, holo, prix: l.price, prochaine: new Date(new Date(l.created_at).getTime() + PALIER_MS) });
+    continue;
+  }
+  const apres = Math.max(plancher, l.price - pasDe(c.rarity, holo));
+  // La vendre à la valeur de défausse rapporterait autant que la défausser : on défausse direct.
+  const aJeter = !SANS_DEFAUSSE && apres <= plancher;
+
+  if (!DRY) {
+    const r = await sb.rpc("cancel_listing", { p_listing: l.id });
+    if (r.error) { echec(c, `retrait de l'annonce : ${r.error.message}`); continue; }
+  }
+  t.enVente--;
+
+  if (!aJeter) {
+    if (!DRY) {
+      const r = await sb.rpc("list_card", { p_instance: l.instance_id, p_price: apres });
+      // L'exemplaire est retiré mais pas remis en vente : il repartira au prix de départ au prochain lancement.
+      if (r.error) { echec(c, `remise en vente à ${apres} K : ${r.error.message}`); continue; }
+    }
+    t.enVente++;
+    baissees.push({ carte: c, holo, avant: l.price, apres });
+    console.log(ligne(DRY ? "·" : "↓", c, holo, `${l.price} K → ${apres} K${apres === plancher ? "  (prix plancher)" : ""}`));
+    continue;
+  }
+
+  // Personne n'en veut : défausse de cet exemplaire et du surplus du même genre.
+  await defausser(c, holo, t, l.instance_id);
+}
+
+// ---------- Nouvelles annonces ----------
 const aVendre = [];
 const ignorees = []; // rareté inconnue : pas de prix fiable, on saute la carte
 for (const [id, t] of parCarte) {
-  const niveauMax = (niveaux[id] || 0) >= NIVEAU_MAX;
+  const niveauMax = estNiveauMax(id);
   const choix = choisir(t, niveauMax);
   if (!choix) continue;
-  if (!RAR[cards[id]?.rarity]) { ignorees.push(cards[id]?.name || id); continue; }
-  aVendre.push({ ...cards[id], ...choix, niveauMax, prix: prixDe(cards[id].rarity, choix.holo) });
+  const c = cards[id];
+  if (!RAR[c?.rarity]) { ignorees.push(c?.name || id); continue; }
+  const prix = prixDe(c.rarity, choix.holo);
+  // Avec une grosse remise, le prix de départ tombe sur la valeur de défausse : on défausse direct.
+  if (!SANS_DEFAUSSE && prix <= plancherDe(c.rarity, choix.holo)) { await defausser(c, choix.holo, t, null); continue; }
+  aVendre.push({ ...c, ...choix, niveauMax, prix });
 }
+if (baissees.length || defaussees.length) console.log("");
 aVendre.sort((a, b) => ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) || a.n - b.n);
 
-console.log(`${me.pseudo} : ${aVendre.length} carte(s) à mettre en vente (1 annonce par carte), remise de ${REMISE} %.${DRY ? "  (DRY-RUN : rien ne sera mis en vente)" : ""}\n`);
+console.log(`${me.pseudo} : ${aVendre.length} carte(s) à mettre en vente (1 annonce par carte), remise de ${REMISE} %.${DRY ? "  (DRY-RUN : rien ne sera fait)" : ""}\n`);
 
-const echecs = []; // { name, message }
 for (const c of aVendre) {
   if (!DRY) {
     const r = await sb.rpc("list_card", { p_instance: c.instance, p_price: c.prix });
-    if (r.error) {
-      c.echec = true;
-      echecs.push({ name: c.name, message: r.error.message });
-      console.error(`  ✗ ${c.name} : ${r.error.message}`);
-      continue;
-    }
+    if (r.error) { c.echec = true; echec(c, r.error.message); continue; }
   }
-  console.log(`  ${DRY ? "·" : "✓"} n°${String(c.n).padEnd(4)} ${c.name.slice(0, 44).padEnd(44)} ${(c.holo ? "holo" : "normale").padEnd(8)} ${c.prix} K${c.niveauMax ? "  (niveau max)" : ""}`);
+  console.log(ligne(DRY ? "·" : "✓", c, c.holo, `${c.prix} K${c.niveauMax ? "  (niveau max)" : ""}`));
 }
 const vendues = aVendre.filter((c) => !c.echec);
 const total = vendues.reduce((s, c) => s + c.prix, 0);
 
 // ---------- Compte rendu ----------
 const verbe = DRY ? "à mettre en vente" : "mise(s) en vente";
+const genre = (holo) => (holo ? "Holo" : "Normale");
 const L = [`# Ventes pour ${me.pseudo}`, "", new Date().toISOString(), ""];
-if (DRY) L.push("DRY-RUN : rien n'a été mis en vente.", "");
-L.push(`${vendues.length} carte(s) ${verbe} avec une remise de ${REMISE} %, pour ${total} K au total si tout part. Une annonce à la fois par carte.`, "");
+if (DRY) L.push("DRY-RUN : rien n'a été fait.", "");
+L.push(
+  `${vendues.length} carte(s) ${verbe} avec une remise de ${REMISE} %, pour ${total} K au total si tout part. Une annonce à la fois par carte.`,
+  "",
+  `Sans acheteur après ${PALIER_H} h, une annonce baisse de ${BAISSE} % du prix de référence, ${SANS_DEFAUSSE ? "jusqu'à la valeur de défausse." : "et la carte est défaussée dès qu'elle atteindrait la valeur de défausse."}`,
+  "",
+);
 for (const r of ORDER) {
   const g = vendues.filter((c) => c.rarity === r);
   if (!g.length) continue;
   L.push(`## ${RAR[r].name}`, "", "| N° | Carte | Exemplaire | Prix | Niveau max |", "|---:|---|---|---:|---|");
-  for (const c of g) L.push(`| ${c.n} | ${c.name} | ${c.holo ? "Holo" : "Normale"} | ${c.prix} K | ${c.niveauMax ? "Oui" : "Non"} |`);
+  for (const c of g) L.push(`| ${c.n} | ${c.name} | ${genre(c.holo)} | ${c.prix} K | ${c.niveauMax ? "Oui" : "Non"} |`);
+  L.push("");
+}
+if (baissees.length) {
+  L.push(`## Prix baissés (${baissees.length})`, "", "| N° | Carte | Exemplaire | Avant | Après |", "|---:|---|---|---:|---:|");
+  for (const b of baissees) L.push(`| ${b.carte.n} | ${b.carte.name} | ${genre(b.holo)} | ${b.avant} K | ${b.apres} K |`);
+  L.push("");
+}
+if (defaussees.length) {
+  const gain = defaussees.reduce((s, d) => s + d.gain, 0);
+  L.push(`## Défaussées, personne n'en voulait (${defaussees.reduce((s, d) => s + d.nombre, 0)} exemplaire(s), +${gain} K)`, "", "| N° | Carte | Exemplaire | Nombre | Gain |", "|---:|---|---|---:|---:|");
+  for (const d of defaussees) L.push(`| ${d.carte.n} | ${d.carte.name} | ${genre(d.holo)} | ${d.nombre} | ${d.gain} K |`);
+  L.push("");
+}
+if (enAttente.length) {
+  L.push(`## En vente, prochaine baisse plus tard (${enAttente.length})`, "", "| N° | Carte | Exemplaire | Prix | Prochaine baisse |", "|---:|---|---|---:|---|");
+  for (const a of enAttente) L.push(`| ${a.carte.n} | ${a.carte.name} | ${genre(a.holo)} | ${a.prix} K | après ${a.prochaine.toISOString().slice(0, 16).replace("T", " ")} UTC |`);
   L.push("");
 }
 if (echecs.length) {
@@ -207,6 +338,9 @@ if (ignorees.length) {
 writeFileSync("ventes.md", L.join("\n") + "\n");
 
 console.log(`\n${vendues.length} carte(s) ${verbe}, ${total} K au total si tout part.${echecs.length ? ` ${echecs.length} échec(s).` : ""}`);
+if (baissees.length) console.log(`${baissees.length} prix baissé(s).`);
+if (defaussees.length) console.log(`${defaussees.reduce((s, d) => s + d.nombre, 0)} exemplaire(s) défaussé(s).`);
+if (enAttente.length) console.log(`${enAttente.length} annonce(s) en attente de la prochaine baisse.`);
 if (ignorees.length) console.log(`${ignorees.length} carte(s) ignorée(s), rareté inconnue.`);
 console.log("Compte rendu dans ventes.md.");
 if (echecs.length) process.exitCode = 1;

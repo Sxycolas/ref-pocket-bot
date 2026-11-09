@@ -10,8 +10,18 @@ on:
           - retirer
         default: vendre
       remise:
-        description: "Vendre : remise en % par rapport au prix de référence"
+        description: "Vendre : remise de départ en % par rapport au prix de référence"
         default: "20"
+      baisse:
+        description: "Vendre : baisse en % du prix de référence, à chaque palier sans acheteur"
+        default: "10"
+      palier:
+        description: "Vendre : heures sans acheteur avant chaque baisse"
+        default: "24"
+      defausser:
+        description: "Vendre : défausser les cartes que personne n'achète, même à la valeur de défausse"
+        type: boolean
+        default: true
       cartes:
         description: "Retirer : numéros de carte séparés par des virgules (vide = toutes les annonces)"
         default: ""
@@ -38,7 +48,8 @@ jobs:
           if [ "$ACTION" = "retirer" ]; then
             if [ -n "$CARTES" ]; then args+=("--retirer=$CARTES"); else args+=(--retirer); fi
           else
-            args+=("--remise=$REMISE")
+            args+=("--remise=$REMISE" "--baisse=$BAISSE" "--palier=$PALIER")
+            if [ "$DEFAUSSER" = "false" ]; then args+=(--sans-defausse); fi
           fi
           npm run vendre -- "${args[@]}"
         env:
@@ -46,6 +57,9 @@ jobs:
           REF_PASS: ${{ secrets.REF_PASS }}
           ACTION: ${{ inputs.action }}
           REMISE: ${{ inputs.remise || '20' }}
+          BAISSE: ${{ inputs.baisse || '10' }}
+          PALIER: ${{ inputs.palier || '24' }}
+          DEFAUSSER: ${{ inputs.defausser }}
           CARTES: ${{ inputs.cartes }}
           DRY: ${{ inputs.dry }}
       - run: cat ventes.md >> "$GITHUB_STEP_SUMMARY"

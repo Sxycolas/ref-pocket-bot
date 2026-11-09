@@ -8,6 +8,8 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 3
+    env:
+      HAS_BOT: ${{ secrets.BOT_EMAIL != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,3 +20,11 @@ jobs:
         env:
           REF_EMAIL: ${{ secrets.REF_EMAIL }}
           REF_PASS: ${{ secrets.REF_PASS }}
+      # Facultatif : ouvre aussi les boosters du compte bot (duels.yml), si ses secrets existent.
+      - name: Boosters du bot
+        if: ${{ env.HAS_BOT == 'true' }}
+        continue-on-error: true
+        run: node bot.mjs
+        env:
+          REF_EMAIL: ${{ secrets.BOT_EMAIL }}
+          REF_PASS: ${{ secrets.BOT_PASS }}
