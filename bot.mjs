@@ -1,20 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
+import { ouvrirSession } from "./session.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const { REF_EMAIL, REF_PASS } = process.env;
 
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 
-const sb = createClient(URL, KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
-const { error: e0 } = await sb.auth.signInWithPassword({
-  email: REF_EMAIL,
-  password: REF_PASS,
-});
+const { sb, error: e0 } = await ouvrirSession(REF_EMAIL, REF_PASS);
 if (e0) {
   log("Connexion impossible :", e0.message);
   process.exit(1);

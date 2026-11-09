@@ -24,11 +24,9 @@
 //
 // Écrit un compte rendu dans duels.md.
 
-import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
+import { ouvrirSession } from "./session.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const { REF_EMAIL, REF_PASS, BOT_EMAIL, BOT_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 if (!BOT_EMAIL || !BOT_PASS) throw new Error("BOT_EMAIL / BOT_PASS manquants (identifiants du compte bot)");
@@ -52,8 +50,7 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const todayUTC = () => new Date().toISOString().slice(0, 10);
 
 async function connecter(email, pass, qui) {
-  const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  const { sb, error } = await ouvrirSession(email, pass);
   if (error) die(`Connexion impossible (${qui}) : ${error.message}`);
   const p = await sb.rpc("my_profile");
   if (p.error || !p.data?.id) die(`Profil introuvable (${qui}) : ${p.error?.message || "vide"}`);
@@ -134,8 +131,23 @@ function deck(coll, tri) {
   if (choix.length < DECK_SIZE) return null;
   return choix.map((id) => (coll.get(id).holo ? id + "*" : id));
 }
+// Gardées en mémoire entre les duels pour limiter les requêtes. null : à relire au prochain duel.
+let collections = null;
+// Reporte la carte prise au bot. Si elle a été jouée en holo, on ne sait pas quel exemplaire
+// est parti : on relira les collections.
+function noterPrise(idCarte, dBot) {
+  if (!dBot.includes(idCarte)) { collections = null; return; }
+  const [mienne, sienne] = collections;
+  sienne.get(idCarte).total--;
+  sienne.get(idCarte).dispo--;
+  const chezMoi = mienne.get(idCarte) || { total: 0, dispo: 0, holo: false };
+  chezMoi.total++;
+  chezMoi.dispo++;
+  mienne.set(idCarte, chezMoi);
+}
 async function decks() {
-  const [mienne, sienne] = await Promise.all([collection(moi), collection(bot)]);
+  collections ??= await Promise.all([collection(moi), collection(bot)]);
+  const [mienne, sienne] = collections;
   // Toi : ton deck le plus fort (comme « Deck automatique » dans le site).
   const dMoi = deck(mienne, (a, b) => force(b) - force(a));
   // Le bot : d'abord ce que tu n'as pas, puis les plus rares, puis les plus faibles.
@@ -247,8 +259,8 @@ for (let k = 0; !DRY && k < aJouer; k++) {
     const prize = row.state?.prize;
     if (res.victoire && prize && prize.w === cote && !prize.got) {
       const z = await moi.sb.rpc("duel_prize", { p_duel: res.id, p_pick: Math.floor(Math.random() * DECK_SIZE) });
-      if (z.error) res.erreur = "carte non prise : " + z.error.message;
-      else { res.carte = z.data?.got; res.nouvelle = !!res.carte && !mienne.has(res.carte); }
+      if (z.error) { res.erreur = "carte non prise : " + z.error.message; collections = null; }
+      else { res.carte = z.data?.got; res.nouvelle = !!res.carte && !mienne.has(res.carte); noterPrise(res.carte, dBot); }
     }
     console.log(`  ${res.victoire ? "✓ Victoire" : "✗ Défaite "} n°${res.id}  +${res.gain ?? "?"} K (bot +${res.gainBot ?? "?"} K)${res.carte ? `  · tu prends « ${nomDe(res.carte)} »${res.nouvelle ? " (nouvelle !)" : ""}` : ""}${res.erreur ? `  · ${res.erreur}` : ""}`);
 
@@ -260,6 +272,7 @@ for (let k = 0; !DRY && k < aJouer; k++) {
   } catch (e) {
     res.erreur = e.message;
     echecs.push(res);
+    collections = null; // un deck refusé vient peut-être d'une collection dépassée
     console.error(`  ✗ Duel ${res.id ? `n°${res.id}` : k + 1} : ${e.message}`);
     await nettoyer();
     if (echecs.length >= 3) { console.error("Trois échecs : on arrête là."); break; }

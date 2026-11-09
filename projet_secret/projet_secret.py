@@ -11,6 +11,7 @@ import os
 import secrets
 import subprocess
 import sys
+import time
 from itertools import zip_longest
 from pathlib import Path
 import random
@@ -34,6 +35,8 @@ MOTS = ["Wolf", "Shadow", "Storm", "Blade", "Fox", "Nova", "Ghost", "Fire", "Byt
 NB_CARTES_MAX = 340 ## Mettre à 340 pour le vrai test
 FICHIER_COMPTES = DOSSIER / "compte-auto.json"
 DECK_SIZE = 6  # même valeur que duels.mjs
+# Secondes. Chaque script fait jusqu'à 2 connexions et le serveur les limite, sauf si elles sont réutilisées.
+PAUSE_ENTRE_SCRIPTS = 3 if os.environ.get("REF_SESSIONS") else 20
  
  
 def generer_pseudo(lettre=None):
@@ -238,6 +241,7 @@ def _masque(email):
 
 def _lancer(commande, **options):
     """Lance un script Node. Son échec lève CalledProcessError, sans jamais montrer ses arguments."""
+    time.sleep(PAUSE_ENTRE_SCRIPTS)
     try:
         return subprocess.run(commande, check=True, **options)
     except subprocess.CalledProcessError as erreur:

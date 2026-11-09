@@ -9,10 +9,8 @@
 // Avec --completer=N, seules les cartes qui manquent à la destination pour avoir N cartes
 // différentes jouables en deck sont envoyées, les moins rares d'abord, et sans les Kheys.
 
-import { createClient } from "@supabase/supabase-js";
+import { ouvrirSession } from "../session.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const TAILLE_LOT = 10; // maximum du jeu par échange
 const CONTREPARTIE = 1; // Kheys versés en retour : le jeu exige que le receveur propose quelque chose
 const DECK_MAX = { L: 1, E: 2 }; // mêmes limites par deck que le site
@@ -43,8 +41,7 @@ if (completer !== null && (!Number.isInteger(completer) || completer < 1)) {
 
 async function connecter(email, password) {
   const masque = `${email.slice(0, 3)}***`; // ces messages peuvent finir dans des logs publics
-  const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await sb.auth.signInWithPassword({ email, password });
+  const { sb, error } = await ouvrirSession(email, password);
   if (error) stop(`Connexion impossible (${masque}) : ${error.message}`);
   const p = await sb.rpc("my_profile");
   if (p.error || !p.data?.id) stop(`Profil introuvable (${masque}) : ${p.error?.message ?? "vide"}`);
@@ -74,7 +71,9 @@ if (ami?.status === "pending") {
   const r = await repondant.sb.rpc("friend_respond", { p_id: ami.id, p_accept: true });
   if (r.error) stop(`Acceptation de l'ami impossible : ${r.error.message}`);
 }
-if ((await lienAmi())?.status !== "accepted") stop("Les deux comptes ne sont toujours pas amis.");
+if (ami?.status !== "accepted" && (await lienAmi())?.status !== "accepted") {
+  stop("Les deux comptes ne sont toujours pas amis.");
+}
 
 async function offresOuvertes() {
   const { data, error } = await source.sb.from("trades").select("id,status")
@@ -191,5 +190,4 @@ for (const [i, lot] of lots.entries()) {
   log(`Échange ${i + 1}/${lots.length} : ${lot.length} cartes et ${kheysLot} K contre ${CONTREPARTIE} K.`);
 }
 
-const [finSource, finDest] = await Promise.all([source.sb.rpc("my_profile"), dest.sb.rpc("my_profile")]);
-log(`Terminé : ${aEnvoyer.length} cartes transférées. ${source.me.pseudo} a ${finSource.data?.kheys ?? "?"} K, ${dest.me.pseudo} a ${finDest.data?.kheys ?? "?"} K.`);
+log(`Terminé : ${aEnvoyer.length} cartes transférées.`);

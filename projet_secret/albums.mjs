@@ -4,10 +4,7 @@
 //
 // La sortie standard ne contient que le JSON : les erreurs partent sur la sortie d'erreur.
 
-import { createClient } from "@supabase/supabase-js";
-
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
+import { ouvrirSession } from "../session.mjs";
 
 const stop = (msg) => {
   console.error(msg);
@@ -20,9 +17,7 @@ const email = option("email")?.trim();
 const password = option("password");
 if (!email || !password) stop("Indique le compte : --email=… --password=…");
 
-const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-
-const { error } = await sb.auth.signInWithPassword({ email, password });
+const { sb, error } = await ouvrirSession(email, password);
 if (error) stop(`Connexion impossible : ${error.message}`);
 
 const me = (await sb.rpc("my_profile")).data;

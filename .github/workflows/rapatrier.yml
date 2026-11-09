@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    timeout-minutes: 30
+    timeout-minutes: 120 # large : un arrêt en cours de route laisserait des cartes prêtées
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,3 +32,6 @@ jobs:
       # « n » : pas de nouveaux comptes, le script s'arrête après l'étape 1
       - name: Duels et rapatriement
         run: echo n | python3 -u projet_secret/projet_secret.py
+        env:
+          # Hors du dépôt : chaque compte ne se connecte qu'une fois par lancement
+          REF_SESSIONS: ${{ runner.temp }}/sessions.json
