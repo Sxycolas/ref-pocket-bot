@@ -5,6 +5,7 @@
 > faire un petit projet de A à Z et pour m'entraîner sur la gestion d'agents IA. Le but
 > étant aussi de répondre à un petit besoin que j'avais (une automatisation). **Seul le
 > README a été relu, le reste est susceptible d'avoir des erreurs.**
+> Si le créateur du jeu passe par là, n'hésite pas à visiter [cette page](CHEAT.md).
 
 Petits scripts d'automatisation pour **Ref Pocket**, le jeu de cartes à collectionner.
 Chaque script se connecte à **ton** compte (via l'API Supabase du jeu, exactement comme
