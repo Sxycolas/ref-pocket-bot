@@ -164,6 +164,38 @@ Si tu préfères lancer les scripts depuis ta machine :
    npm run ameliore
    ```
 
+## Rajouter un bot
+
+Le bot est un **second compte Ref Pocket** qui te sert d'adversaire pour les duels
+(`duels.mjs`). Il n'est utile que pour ça : les autres scripts n'en ont pas besoin.
+
+1. **Créer le compte** : inscris-toi sur Ref Pocket avec une autre adresse email et choisis-lui
+   un pseudo. Pas besoin de l'ajouter en ami : `duels.mjs` le fait tout seul.
+2. **Donner ses identifiants**, au même endroit que les tiens :
+   - **sur GitHub Actions**, deux secrets de plus (**Settings → Secrets and variables →
+     Actions → New repository secret**) :
+
+     | Nom du secret | Valeur |
+     |---|---|
+     | `BOT_EMAIL` | l'email du compte bot |
+     | `BOT_PASS` | le mot de passe du compte bot (tel quel, **sans** guillemets) |
+
+   - **en local**, deux lignes de plus dans ton `.env` (le modèle `.env.example` les contient) :
+     ```bash
+     BOT_EMAIL=email.du.bot@exemple.com
+     BOT_PASS='mot_de_passe_du_bot'
+     ```
+3. **Lui donner des cartes** : il lui faut au moins **6 cartes différentes** pour composer un
+   deck, et il en perd une à chaque duel. Rien à faire à la main : dès que les secrets
+   `BOT_EMAIL` / `BOT_PASS` existent, `booster.yml` ouvre aussi ses boosters toutes les heures,
+   et `duels.yml` les ouvre avant chaque série. En local, donne ses identifiants à `npm run bot`
+   (ceux de la ligne de commande passent avant ceux du `.env`) :
+   ```bash
+   REF_EMAIL='email.du.bot@exemple.com' REF_PASS='mot_de_passe_du_bot' npm run bot
+   ```
+4. **Vérifier** : `npm run duels -- --dry` (ou *Test à blanc* dans `duels.yml`) connecte les deux
+   comptes et affiche les deux decks, sans jouer.
+
 ## Choisir les raretés à améliorer
 
 Par défaut, `npm run ameliore` traite toutes les raretés. Pour n'en traiter que certaines :
@@ -228,38 +260,6 @@ Sur GitHub Actions, le formulaire « Run workflow » de `vendre.yml` propose les
 > ⚠️ La défausse est **définitive**. Lance d'abord `npm run vendre -- --dry` (ou coche *Test à
 > blanc* sur GitHub) pour voir ce qui baisserait et ce qui serait défaussé.
 
-## Rajouter un bot
-
-Le bot est un **second compte Ref Pocket** qui te sert d'adversaire pour les duels
-(`duels.mjs`). Il n'est utile que pour ça : les autres scripts n'en ont pas besoin.
-
-1. **Créer le compte** : inscris-toi sur Ref Pocket avec une autre adresse email et choisis-lui
-   un pseudo. Pas besoin de l'ajouter en ami : `duels.mjs` le fait tout seul.
-2. **Donner ses identifiants**, au même endroit que les tiens :
-   - **sur GitHub Actions**, deux secrets de plus (**Settings → Secrets and variables →
-     Actions → New repository secret**) :
-
-     | Nom du secret | Valeur |
-     |---|---|
-     | `BOT_EMAIL` | l'email du compte bot |
-     | `BOT_PASS` | le mot de passe du compte bot (tel quel, **sans** guillemets) |
-
-   - **en local**, deux lignes de plus dans ton `.env` (le modèle `.env.example` les contient) :
-     ```bash
-     BOT_EMAIL=email.du.bot@exemple.com
-     BOT_PASS='mot_de_passe_du_bot'
-     ```
-3. **Lui donner des cartes** : il lui faut au moins **6 cartes différentes** pour composer un
-   deck, et il en perd une à chaque duel. Rien à faire à la main : dès que les secrets
-   `BOT_EMAIL` / `BOT_PASS` existent, `booster.yml` ouvre aussi ses boosters toutes les heures,
-   et `duels.yml` les ouvre avant chaque série. En local, donne ses identifiants à `npm run bot`
-   (ceux de la ligne de commande passent avant ceux du `.env`) :
-   ```bash
-   REF_EMAIL='email.du.bot@exemple.com' REF_PASS='mot_de_passe_du_bot' npm run bot
-   ```
-4. **Vérifier** : `npm run duels -- --dry` (ou *Test à blanc* dans `duels.yml`) connecte les deux
-   comptes et affiche les deux decks, sans jouer.
-
 ## Duels contre ton compte bot
 
 Chaque duel en ligne rapporte des Kheys : **+30 K** en cas de victoire, **+10 K** en cas de
@@ -278,7 +278,7 @@ défaite, dans la limite de **10 duels récompensés par jour** (remis à zéro 
 
 Pour 10 duels gagnés : **+300 K** pour toi, **+100 K** pour le bot, et 10 cartes du bot pour toi.
 
-Il faut d'abord un compte bot : voir *Rajouter un bot* ci-dessous.
+Il faut d'abord un compte bot : voir *Rajouter un bot* plus haut.
 
 ```bash
 npm run duels -- --dry          # vérifie les comptes, l'amitié et les decks, sans jouer
