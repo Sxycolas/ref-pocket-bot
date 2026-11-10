@@ -34,9 +34,7 @@ async function fetchAll(build) {
   return out;
 }
 
-const catalogue = (
-  await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen").order("n"))
-).filter((c) => (c.gen || 1) === 1);
+const catalogue = await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen,active").order("n"));
 const instances = await fetchAll(() =>
   sb.from("card_instances").select("card_id,holo").eq("owner", me.id).order("id"),
 );
@@ -49,11 +47,18 @@ for (const { card_id, holo } of instances) {
   possedees.set(card_id, c);
 }
 
+const genDe = (c) => c.gen || 1;
+// Comme l'album du site : une carte non publiée ne peut pas manquer
+const manquantes = catalogue.filter((c) => c.active && !possedees.has(c.id));
+
 console.log(
   JSON.stringify({
-    manquantes: catalogue.filter((c) => !possedees.has(c.id)).length,
+    manquantes: manquantes.length,
+    manquantes_par_gen: Object.fromEntries(
+      [...new Set(catalogue.map(genDe))].map((g) => [g, manquantes.filter((c) => genDe(c) === g).length]),
+    ),
     cartes: catalogue
       .filter((c) => possedees.has(c.id))
-      .map((c) => ({ n: c.n, nom: c.name, rarete: c.rarity, ...possedees.get(c.id) })),
+      .map((c) => ({ n: c.n, nom: c.name, gen: genDe(c), rarete: c.rarity, ...possedees.get(c.id) })),
   }),
 );

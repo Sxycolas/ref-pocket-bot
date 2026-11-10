@@ -142,20 +142,24 @@ def transferer(email_source, password_source, email, password, completer=None):
     _lancer(commande)
 
 
-def cartes_compte(email, password):
+def cartes_compte(email, password, gen=None):
     """Renvoie (nombre_de_cartes_manquantes, cartes) pour ce compte.
 
-    Chaque carte est un dictionnaire : n, nom, rarete (C, R, E ou L), exemplaires, holos.
+    gen : 1 ou 2 pour se limiter à cette génération, toutes les générations par défaut.
+    Chaque carte est un dictionnaire : n, nom, gen, rarete (C, R, E ou L), exemplaires, holos.
     Lève CalledProcessError si le script échoue.
     """
     infos = _lire_json("cartes.mjs", email, password)
-    return infos["manquantes"], infos["cartes"]
+    if gen is None:
+        return infos["manquantes"], infos["cartes"]
+    return infos["manquantes_par_gen"].get(str(gen), 0), [c for c in infos["cartes"] if c["gen"] == gen]
 
 
 def recuperer_albums(email, password):
-    """Réclame les récompenses des albums complétés et non réclamés de ce compte.
+    """Réclame les récompenses des albums complétés et non réclamés de ce compte, toutes générations.
 
     Renvoie la liste des récompenses obtenues : [{"album": ..., "kheys": ...}].
+    Les albums de la génération 2 ont le préfixe "2:" (par exemple "2:*" pour l'album complet).
     Lève CalledProcessError si le script échoue.
     """
     return _lire_json("albums.mjs", email, password)

@@ -43,11 +43,15 @@ const claims = await fetchAll(() => sb.from("album_claims").select("album").eq("
 const possedees = new Set(instances.map((i) => i.card_id));
 const dejaReclames = new Set(claims.map((c) => c.album));
 
-// Mêmes albums que le site : un par type et un complet ("*")
-const actives = catalogue.filter((c) => c.active && (c.gen || 1) === 1);
-const albums = actives.length ? [{ cle: "*", cartes: actives }] : [];
-for (const type of new Set(actives.map((c) => c.type))) {
-  albums.push({ cle: type, cartes: actives.filter((c) => c.type === type) });
+// Mêmes albums que le site, par génération : un par type et un complet ("*"), préfixés "2:" en Gén. 2
+const albums = [];
+for (const gen of [1, 2]) {
+  const prefixe = gen === 2 ? "2:" : "";
+  const actives = catalogue.filter((c) => c.active && (c.gen || 1) === gen);
+  if (actives.length) albums.push({ cle: `${prefixe}*`, cartes: actives });
+  for (const type of new Set(actives.map((c) => c.type))) {
+    albums.push({ cle: prefixe + type, cartes: actives.filter((c) => c.type === type) });
+  }
 }
 
 const reclames = [];
