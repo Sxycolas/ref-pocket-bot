@@ -14,7 +14,8 @@
 //   ... node ameliore-cartes.mjs --dry                       -> n'améliore rien, explique seulement
 //   ... node ameliore-cartes.mjs --raretes=L,E               -> seulement ces raretés (toutes par défaut) :
 //                                                               L Légendaire, E Épique, R Rare, C Commune
-//   npm run ameliore            (lit le .env en local ; secrets sur GitHub Actions)
+//   ... node ameliore-cartes.mjs --gen=2                     -> seulement cette génération, 1 ou 2 (toutes par défaut)
+//   npm run ameliore           (lit le .env en local ; secrets sur GitHub Actions)
 //
 // Écrit un compte rendu dans ameliorations.md (ce qui a été amélioré ET pourquoi
 // le reste ne l'a pas été).
@@ -33,6 +34,11 @@ const MAX_PER_CARD = 30; // garde-fou : 1+2+...+30 = 465 doublons, hors de port�
 const raretesArg = process.argv.find((a) => a.startsWith("--raretes="));
 const RARETES = raretesArg ? raretesArg.slice("--raretes=".length).toUpperCase().replace(/[\s,]/g, "") : "LERC";
 if (!/^[LERC]+$/.test(RARETES)) throw new Error("--raretes attend au moins une rareté parmi L, E, R, C (ex. --raretes=L,E)");
+
+// Un « --gen 2 » mal écrit doit arrêter le script : sinon il améliorerait toutes les générations
+const genArg = process.argv.find((a) => a.startsWith("--gen"));
+const GEN = genArg ? Number(genArg.split("=")[1]) : null;
+if (GEN !== null && GEN !== 1 && GEN !== 2) throw new Error("--gen attend 1 ou 2 (ex. --gen=2)");
 
 const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
@@ -73,11 +79,12 @@ const genDe = (id) => cards[id]?.gen || 1;
 const examined = [...m.entries()]
   .filter(([, t]) => t.simple + t.holo + t.vente >= 2)
   .map(([id, t]) => ({ id, ...t, gen: genDe(id), name: `${genDe(id) > 1 ? `[Gén. ${genDe(id)}] ` : ""}${cards[id]?.name || id}`, r: cards[id]?.rarity || "C" }))
-  .filter((c) => RARETES.includes(c.r))
+  .filter((c) => RARETES.includes(c.r) && (GEN === null || c.gen === GEN))
   .sort((a, b) => b.gen - a.gen || ORDER[a.r] - ORDER[b.r] || b.simple - a.simple);
 
 const raretesTexte = ["L", "E", "R", "C"].filter((r) => RARETES.includes(r)).map((r) => RAR[r]).join(", ");
-console.log(`${me.pseudo} : ${examined.length} carte(s) en plusieurs exemplaires examinée(s) (${raretesTexte}).${DRY ? "  (DRY-RUN : rien ne sera modifié)" : ""}`);
+const gensTexte = GEN === null ? "toutes" : `Gén. ${GEN}`;
+console.log(`${me.pseudo} : ${examined.length} carte(s) en plusieurs exemplaires examinée(s) (${raretesTexte} · générations : ${gensTexte}).${DRY ? "  (DRY-RUN : rien ne sera modifié)" : ""}`);
 
 const upgraded = [];       // { name, r, levels, newLevel }
 const blockedHolo = [];    // 1 seul simple, bloqué parce que les holos ne comptent pas
@@ -115,7 +122,7 @@ for (const c of examined) {
 
 // ---------- Compte rendu ----------
 const stamp = new Date().toISOString();
-const L = [`# Améliorations pour ${me.pseudo}`, "", stamp, "", `Raretés traitées : ${raretesTexte}.`, ""];
+const L = [`# Améliorations pour ${me.pseudo}`, "", stamp, "", `Raretés traitées : ${raretesTexte}.`, "", `Générations traitées : ${gensTexte}.`, ""];
 const totalUp = upgraded.reduce((s, u) => s + u.levels.length, 0);
 
 if (DRY) L.push("DRY-RUN : aucune amélioration effectuée.", "");

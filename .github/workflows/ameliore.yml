@@ -18,6 +18,14 @@ on:
         description: "Améliorer les communes"
         type: boolean
         default: true
+      generation:
+        description: "Générations à améliorer"
+        type: choice
+        options:
+          - toutes
+          - "1"
+          - "2"
+        default: toutes
 
 jobs:
   ameliore:
@@ -36,8 +44,11 @@ jobs:
           for r in L E R C; do
             if [ "${!r}" = "true" ]; then raretes+="$r"; fi
           done
-          npm run ameliore -- --raretes="$raretes"
+          gen=()
+          if [ "$GENERATION" = "1" ] || [ "$GENERATION" = "2" ]; then gen=("--gen=$GENERATION"); fi
+          npm run ameliore -- --raretes="$raretes" "${gen[@]}"
         env:
+          GENERATION: ${{ inputs.generation }}
           REF_EMAIL: ${{ secrets.REF_EMAIL }}
           REF_PASS: ${{ secrets.REF_PASS }}
           L: ${{ inputs.legendaires }}

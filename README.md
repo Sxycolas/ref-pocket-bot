@@ -210,6 +210,12 @@ Par défaut, `npm run ameliore` traite toutes les raretés. Pour n'en traiter qu
 - **Avec cron-job.org** : ajoute les raretés à ignorer dans le corps de la requête, par exemple
   `{"ref":"main","inputs":{"communes":"false"}}`.
 
+Pour n'améliorer qu'une génération, toutes les générations étant traitées par défaut :
+
+- **Sur GitHub Actions** : choisis `1` ou `2` dans « Générations à améliorer » du formulaire « Run workflow ».
+- **En local** : `npm run ameliore -- --gen=2`, qui se combine avec `--raretes`.
+- **Avec cron-job.org** : `{"ref":"main","inputs":{"generation":"2"}}`.
+
 ## Vendre les doublons inutiles
 
 `npm run vendre` met en vente sur le marché du jeu les exemplaires qui ne te servent plus :
