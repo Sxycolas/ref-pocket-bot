@@ -32,7 +32,6 @@ MILIEUX = ["", "", "ra", "ri", "no", "la", "ve", "ka", "to", "ry", "an", "el"]
 FINS = ["x", "n", "r", "s", "th", "ko", "ra", "ix", "on", "yr", "ia", "us", "ek", "o", "a"]
 MOTS = ["Wolf", "Shadow", "Storm", "Blade", "Fox", "Nova", "Ghost", "Fire", "Byte", "Raven"]
 
-NB_CARTES_MAX = 340 ## Mettre à 340 pour le vrai test
 FICHIER_COMPTES = DOSSIER / "compte-auto.json"
 DECK_SIZE = 6  # même valeur que duels.mjs
 # Secondes. Chaque script fait jusqu'à 2 connexions et le serveur les limite, sauf si elles sont réutilisées.
@@ -288,7 +287,7 @@ if __name__ == "__main__":
     email_principal, password_principal = principal["email"], principal["password"]
     print("Compte principal :", _masque(email_principal), "| comptes repris :", len(joueurs))
 
-    cartes_manquantes_gen2, cartes_gen2 = cartes_compte(email_principal, password_principal)
+    cartes_manquantes_gen2, cartes_gen2 = cartes_compte(email_principal, password_principal, 2)
     if cartes_manquantes_gen2 > 0:
         print(f"Le compte principal a {cartes_manquantes_gen2} cartes manquantes de génération 2 : elles seront rapatriées.")
         gen = 2
@@ -313,7 +312,7 @@ if __name__ == "__main__":
     ### ETAPE 2 : créer des comptes secondaires et transférer leurs cartes vers le compte principal
 
     sans_progres = 0
-    while cartes_manquantes > (340 - NB_CARTES_MAX):
+    while cartes_manquantes > 0:
         avant = cartes_manquantes
         try:
             pseudo = generer_pseudo()
