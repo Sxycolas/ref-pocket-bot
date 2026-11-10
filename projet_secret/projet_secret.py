@@ -300,7 +300,9 @@ if __name__ == "__main__":
 
     ### ETAPE 2 : créer des comptes secondaires et transférer leurs cartes vers le compte principal
 
-    while cartes_manquantes > (340 - NB_CARTES_MAX): 
+    sans_progres = 0
+    while cartes_manquantes > (340 - NB_CARTES_MAX):
+        avant = cartes_manquantes
         try:
             pseudo = generer_pseudo()
             email, password, pseudo = creer_compte(f"{pseudo.lower()}@exemple.com", pseudo)
@@ -311,6 +313,12 @@ if __name__ == "__main__":
             sys.exit(erreur.returncode)
         cartes_manquantes, cartes = cartes_compte(email_principal, password_principal)
         print("Nb_joueurs:", len(joueurs), "Nb_cartes_manquantes:", cartes_manquantes)
+        # bot.mjs ouvre la génération 2 en priorité alors que ce compteur ne suit que la génération 1 :
+        # sans cet arrêt, il ne baisserait plus et la boucle créerait des comptes sans fin.
+        sans_progres = 0 if cartes_manquantes < avant else sans_progres + 1
+        if sans_progres >= 3:
+            print("Arrêt : 3 comptes de suite sans nouvelle carte de génération 1.")
+            break
 
 
     ### ETAPE 3 : récupérer les récompenses des albums complétés et non réclamés des comptes

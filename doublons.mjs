@@ -40,7 +40,7 @@ async function fetchAll(build) {
 const RAR = { L: "Légendaires", E: "Épiques", R: "Rares", C: "Communes" };
 const ORDER = ["L", "E", "R", "C"];
 
-const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n"))).map((c) => [c.id, c]));
+const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen"))).map((c) => [c.id, c]));
 
 // Regroupe les exemplaires par carte.
 const m = new Map();
@@ -53,11 +53,13 @@ for (const r of await fetchAll(() => sb.from("card_instances").select("card_id,h
   m.set(r.card_id, t);
 }
 
-// Doublons = au moins 2 exemplaires. On trie par rareté puis par identifiant..
+// Doublons = au moins 2 exemplaires. On trie par rareté puis par identifiant.
 const dups = [...m.entries()]
   .filter(([, t]) => t.total >= 2)
-  .map(([id, t]) => ({ id, ...t, name: cards[id]?.name || id, r: cards[id]?.rarity || "C", n: cards[id]?.n ?? 0 }))
+  .map(([id, t]) => ({ id, ...t, name: cards[id]?.name || id, r: cards[id]?.rarity || "C", n: cards[id]?.n ?? 0, gen: cards[id]?.gen || 1 }))
   .sort((a, b) => ORDER.indexOf(a.r) - ORDER.indexOf(b.r) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+// La génération la plus récente d'abord.
+const GENS = [...new Set(dups.map((d) => d.gen))].sort((a, b) => b - a);
 
 const totalDup = dups.reduce((s, d) => s + (d.total - 1), 0);
 const totalHolo = dups.reduce((s, d) => s + d.holo, 0);
@@ -70,11 +72,11 @@ const lines = [
 ];
 console.log(`${me.pseudo} : ${dups.length} cartes en doublon (${totalDup} exemplaires en trop, ${totalHolo} holos).\n`);
 
-for (const r of ORDER) {
-  const g = dups.filter((d) => d.r === r);
+for (const gen of GENS) for (const r of ORDER) {
+  const g = dups.filter((d) => d.gen === gen && d.r === r);
   if (!g.length) continue;
-  lines.push(`## ${RAR[r]} (${g.length})`, "", "| N° | Carte | Total | Holos | Simples | En vente |", "|---:|---|---:|---:|---:|---:|");
-  console.log(`=== ${RAR[r]} (${g.length}) ===`);
+  lines.push(`## Génération ${gen} · ${RAR[r]} (${g.length})`, "", "| N° | Carte | Total | Holos | Simples | En vente |", "|---:|---|---:|---:|---:|---:|");
+  console.log(`=== Génération ${gen} · ${RAR[r]} (${g.length}) ===`);
   for (const d of g) {
     lines.push(`| ${d.n} | ${d.name} | ${d.total} | ${d.holo} | ${d.simple} | ${d.vente} |`);
     console.log(`  n°${String(d.n).padEnd(4)} ${d.name.slice(0, 40).padEnd(40)} total=${d.total}  holos=${d.holo}  simples=${d.simple}${d.vente ? `  vente=${d.vente}` : ""}`);

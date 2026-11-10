@@ -38,13 +38,16 @@ Dans tout ce README, remplace `<TON-COMPTE>` par ton nom d'utilisateur GitHub.
 
 | Script | Commande | Ce qu'il fait | Écrit |
 |---|---|---|---|
-| `bot.mjs` | `npm run bot` | Ouvre les boosters disponibles | — |
+| `bot.mjs` | `npm run bot` | Ouvre les boosters disponibles : la Génération 2 d'abord, puis les boosters achetés réservés à la Génération 1 | — |
 | `ameliore-cartes.mjs` | `npm run ameliore` | Améliore les cartes qui peuvent l'être, dans les raretés choisies, et explique pourquoi les autres ne le peuvent pas | `ameliorations.md` |
 | `cartes-manquantes.mjs` | `npm run manquantes` | Liste les cartes du catalogue que tu n'as pas | `cartes-manquantes.md` |
 | `doublons.mjs` | `npm run doublons` | Liste toutes tes cartes en plusieurs exemplaires (total, holos, simples) | `doublons.md` |
 | `vendre.mjs` | `npm run vendre` | Met en vente à prix réduit les holos en double et les doublons des cartes au niveau max, baisse le prix de ce qui ne part pas puis le défausse (voir *Vendre les doublons inutiles*) | `ventes.md` |
 | `duels.mjs` | `npm run duels` | Joue tes 10 duels récompensés du jour contre ton compte bot (voir *Duels contre ton compte bot*) | `duels.md` |
 | `profils.mjs` | `npm run profils` | Audit : ce que la base laisse voir des profils des autres joueurs | `profils.json` |
+
+Les rapports de `cartes-manquantes.mjs` et `doublons.mjs` sont classés par génération, la plus
+récente en premier. `ameliore-cartes.mjs` et `vendre.mjs` traitent aussi la Génération 2 en premier.
 
 ## Exécution sur GitHub Actions
 

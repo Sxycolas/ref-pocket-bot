@@ -55,7 +55,7 @@ async function fetchAll(build) {
   return out;
 }
 
-const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity"))).map((c) => [c.id, c]));
+const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,gen"))).map((c) => [c.id, c]));
 const RAR = { L: "Légendaire", E: "Épique", R: "Rare", C: "Commune" };
 const ORDER = { L: 0, E: 1, R: 2, C: 3 };
 
@@ -67,12 +67,14 @@ for (const r of await fetchAll(() => sb.from("card_instances").select("card_id,h
   m.set(r.card_id, t);
 }
 
-// On examine toute carte possédée au moins en double sous une forme ou une autre.
+// On examine toute carte possédée au moins en double sous une forme ou une autre,
+// la génération la plus récente d'abord.
+const genDe = (id) => cards[id]?.gen || 1;
 const examined = [...m.entries()]
   .filter(([, t]) => t.simple + t.holo + t.vente >= 2)
-  .map(([id, t]) => ({ id, ...t, name: cards[id]?.name || id, r: cards[id]?.rarity || "C" }))
+  .map(([id, t]) => ({ id, ...t, gen: genDe(id), name: `${genDe(id) > 1 ? `[Gén. ${genDe(id)}] ` : ""}${cards[id]?.name || id}`, r: cards[id]?.rarity || "C" }))
   .filter((c) => RARETES.includes(c.r))
-  .sort((a, b) => ORDER[a.r] - ORDER[b.r] || b.simple - a.simple);
+  .sort((a, b) => b.gen - a.gen || ORDER[a.r] - ORDER[b.r] || b.simple - a.simple);
 
 const raretesTexte = ["L", "E", "R", "C"].filter((r) => RARETES.includes(r)).map((r) => RAR[r]).join(", ");
 console.log(`${me.pseudo} : ${examined.length} carte(s) en plusieurs exemplaires examinée(s) (${raretesTexte}).${DRY ? "  (DRY-RUN : rien ne sera modifié)" : ""}`);

@@ -38,24 +38,34 @@ async function fetchAll(build) {
 const RAR = { L: "Légendaires", E: "Épiques", R: "Rares", C: "Communes" };
 const ORDER = ["L", "E", "R", "C"];
 
-const cards = await fetchAll(() => sb.from("cards").select("id,name,rarity,n,active").order("n"));
+const genDe = (c) => c.gen || 1;
+
+const cards = await fetchAll(() => sb.from("cards").select("id,name,rarity,n,active,gen").order("n"));
 const mineIds = new Set((await fetchAll(() => sb.from("card_instances").select("card_id").eq("owner", me.id))).map((r) => r.card_id));
 const missing = cards.filter((c) => !mineIds.has(c.id));
 
 const lines = [`# Cartes manquantes pour ${me.pseudo}`, "", `Au ${new Date().toISOString()} : ${missing.length} manquante(s) sur ${cards.length} (tu en as ${mineIds.size}).`, ""];
 console.log(`${me.pseudo} : ${mineIds.size}/${cards.length} cartes. Il te manque ${missing.length} cartes.\n`);
-for (const r of ORDER) {
-  const g = missing.filter((c) => c.rarity === r).sort((a, b) => a.n - b.n);
-  if (!g.length) continue;
-  console.log(`=== ${RAR[r]} (${g.length}) ===`);
-  lines.push(`## ${RAR[r]} (${g.length})`);
-  for (const c of g) {
-    const suffix = c.active ? "" : " (hors boosters)";
-    console.log(`  n°${c.n} ${c.name}${suffix}`);
-    lines.push(`- n°${c.n} ${c.name}${suffix}`);
+// La génération la plus récente d'abord.
+for (const gen of [...new Set(cards.map(genDe))].sort((a, b) => b - a)) {
+  const total = cards.filter((c) => genDe(c) === gen).length;
+  const manquantes = missing.filter((c) => genDe(c) === gen);
+  const titre = `Génération ${gen} : il te manque ${manquantes.length} carte(s) sur ${total}`;
+  console.log(`##### ${titre} #####\n`);
+  lines.push(`## ${titre}`, "");
+  for (const r of ORDER) {
+    const g = manquantes.filter((c) => c.rarity === r).sort((a, b) => a.n - b.n);
+    if (!g.length) continue;
+    console.log(`=== ${RAR[r]} (${g.length}) ===`);
+    lines.push(`### ${RAR[r]} (${g.length})`);
+    for (const c of g) {
+      const suffix = c.active ? "" : " (hors boosters)";
+      console.log(`  n°${c.n} ${c.name}${suffix}`);
+      lines.push(`- n°${c.n} ${c.name}${suffix}`);
+    }
+    console.log("");
+    lines.push("");
   }
-  console.log("");
-  lines.push("");
 }
 if (!missing.length) lines.push("Collection complète, félicitations !");
 

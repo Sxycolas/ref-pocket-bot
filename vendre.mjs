@@ -107,7 +107,7 @@ const plancherDe = (r, holo) => RAR[r].discard * mult(holo);
 const prixDe = (r, holo) => Math.max(plancherDe(r, holo), Math.round((RAR[r].value * mult(holo) * (100 - REMISE)) / 100));
 const pasDe = (r, holo) => Math.max(1, Math.round((RAR[r].value * mult(holo) * BAISSE) / 100));
 
-const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n").order("id"))).map((c) => [c.id, c]));
+const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen").order("id"))).map((c) => [c.id, c]));
 const mesAnnonces = () => fetchAll(() => sb.from("listings").select("id,price,created_at,instance_id,inst:card_instances(card_id,holo)").eq("seller", me.id).eq("status", "open").order("id"));
 const ligne = (signe, c, holo, suite) => `  ${signe} n°${String(c?.n ?? "?").padEnd(4)} ${(c?.name || "?").slice(0, 44).padEnd(44)} ${(holo ? "holo" : "normale").padEnd(8)} ${suite}`;
 
@@ -277,7 +277,8 @@ for (const [id, t] of parCarte) {
   aVendre.push({ ...c, ...choix, niveauMax, prix });
 }
 if (baissees.length || defaussees.length) console.log("");
-aVendre.sort((a, b) => ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) || a.n - b.n);
+// La génération la plus récente d'abord.
+aVendre.sort((a, b) => (b.gen || 1) - (a.gen || 1) || ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) || a.n - b.n);
 
 console.log(`${me.pseudo} : ${aVendre.length} carte(s) à mettre en vente (1 annonce par carte), remise de ${REMISE} %.${DRY ? "  (DRY-RUN : rien ne sera fait)" : ""}\n`);
 
