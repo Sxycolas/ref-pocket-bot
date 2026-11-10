@@ -255,10 +255,12 @@ npm run vendre -- --sans-defausse           # ne défausse jamais rien
 npm run vendre -- --retirer            # retire toutes tes annonces ouvertes
 npm run vendre -- --retirer=141,176    # retire seulement ces numéros de carte
 npm run vendre -- --retirer --dry      # affiche ce qui serait retiré, sans rien faire
+npm run vendre -- --gen=2              # seulement la Génération 2 (ou 1), combinable avec le reste
 ```
 
 Sur GitHub Actions, le formulaire « Run workflow » de `vendre.yml` propose les mêmes choix :
 - **action** : `vendre` (par défaut) ou `retirer` ;
+- **generation** : `toutes` (par défaut), `1` ou `2`. Le choix s'applique aux annonces, aux baisses, aux défausses et aux retraits ;
 - **remise**, **baisse**, **palier**, **defausser** : les réglages de prix ci-dessus ;
 - **cartes** : pour `retirer`, les numéros séparés par des virgules (vide = toutes les annonces).
 

@@ -39,6 +39,8 @@
 //   ... node vendre.mjs --sans-defausse             -> ne défausse jamais rien
 //   ... node vendre.mjs --retirer                   -> retire toutes tes annonces ouvertes
 //   ... node vendre.mjs --retirer=141,176           -> retire seulement ces numéros de carte
+//   ... node vendre.mjs --gen=2                     -> seulement cette génération, 1 ou 2 (toutes par défaut) :
+//                                                      annonces, baisses, défausses et retraits
 //   npm run vendre -- --dry     (lit le .env en local ; secrets sur GitHub Actions)
 //
 // Écrit un compte rendu dans ventes.md.
@@ -66,6 +68,13 @@ const PALIER_H = intArg("palier", 24, 1, 24 * 30);
 const retirerArg = process.argv.find((a) => a === "--retirer" || a.startsWith("--retirer="));
 const NUMEROS = retirerArg?.includes("=") ? retirerArg.slice("--retirer=".length).split(",").map((x) => x.trim()) : null;
 if (NUMEROS && !NUMEROS.every((x) => /^\d+$/.test(x))) throw new Error("--retirer= attend des numéros de carte séparés par des virgules (ex. --retirer=141,176)");
+
+// Un « --gen 2 » mal écrit doit arrêter le script : sinon il toucherait toutes les générations
+const genArg = process.argv.find((a) => a.startsWith("--gen"));
+const GEN = genArg ? Number(genArg.split("=")[1]) : null;
+if (GEN !== null && GEN !== 1 && GEN !== 2) throw new Error("--gen attend 1 ou 2 (ex. --gen=2)");
+const genVisee = (c) => GEN === null || (!!c && (c.gen || 1) === GEN);
+const gensTexte = GEN === null ? "toutes" : `Gén. ${GEN}`;
 
 const NIVEAU_MAX = 5; // LVL_MAX dans cartes.js du site
 const GARDER = 1; // exemplaires disponibles conservés sur une carte qui peut encore monter
@@ -109,17 +118,18 @@ const pasDe = (r, holo) => Math.max(1, Math.round((RAR[r].value * mult(holo) * B
 
 const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen").order("id"))).map((c) => [c.id, c]));
 const mesAnnonces = () => fetchAll(() => sb.from("listings").select("id,price,created_at,instance_id,inst:card_instances(card_id,holo)").eq("seller", me.id).eq("status", "open").order("id"));
-const ligne = (signe, c, holo, suite) => `  ${signe} n°${String(c?.n ?? "?").padEnd(4)} ${(c?.name || "?").slice(0, 44).padEnd(44)} ${(holo ? "holo" : "normale").padEnd(8)} ${suite}`;
+const nomDe = (c) => `${(c?.gen || 1) > 1 ? `[Gén. ${c.gen}] ` : ""}${c?.name || "?"}`;
+const ligne = (signe, c, holo, suite) => `  ${signe} n°${String(c?.n ?? "?").padEnd(4)} ${nomDe(c).slice(0, 44).padEnd(44)} ${(holo ? "holo" : "normale").padEnd(8)} ${suite}`;
 
 // ---------- Mode --retirer : retire des annonces au lieu d'en créer ----------
 if (retirerArg) {
   const annonces = await mesAnnonces();
   const visees = annonces
     .map((l) => ({ id: l.id, prix: l.price, holo: l.inst?.holo, carte: cards[l.inst?.card_id] }))
-    .filter((l) => !NUMEROS || NUMEROS.includes(String(l.carte?.n)));
+    .filter((l) => genVisee(l.carte) && (!NUMEROS || NUMEROS.includes(String(l.carte?.n))));
   const sansAnnonce = (NUMEROS || []).filter((x) => !visees.some((l) => String(l.carte?.n) === x));
 
-  console.log(`${me.pseudo} : ${visees.length} annonce(s) à retirer sur ${annonces.length} ouverte(s).${DRY ? "  (DRY-RUN : rien ne sera retiré)" : ""}\n`);
+  console.log(`${me.pseudo} : ${visees.length} annonce(s) à retirer sur ${annonces.length} ouverte(s), générations : ${gensTexte}.${DRY ? "  (DRY-RUN : rien ne sera retiré)" : ""}\n`);
 
   const retirees = [];
   const echecs = []; // { name, message }
@@ -140,10 +150,10 @@ if (retirerArg) {
   const verbe = DRY ? "à retirer" : "retirée(s)";
   const R = [`# Annonces retirées pour ${me.pseudo}`, "", new Date().toISOString(), ""];
   if (DRY) R.push("DRY-RUN : rien n'a été retiré.", "");
-  R.push(`${retirees.length} annonce(s) ${verbe} sur ${annonces.length} ouverte(s).`, "");
+  R.push(`${retirees.length} annonce(s) ${verbe} sur ${annonces.length} ouverte(s). Générations traitées : ${gensTexte}.`, "");
   if (retirees.length) {
     R.push("| N° | Carte | Exemplaire | Prix |", "|---:|---|---|---:|");
-    for (const l of retirees) R.push(`| ${l.carte?.n ?? "?"} | ${l.carte?.name || `annonce #${l.id}`} | ${l.holo ? "Holo" : "Normale"} | ${l.prix} K |`);
+    for (const l of retirees) R.push(`| ${l.carte?.n ?? "?"} | ${l.carte ? nomDe(l.carte) : `annonce #${l.id}`} | ${l.holo ? "Holo" : "Normale"} | ${l.prix} K |`);
     R.push("");
   }
   if (sansAnnonce.length) R.push(`Aucune annonce ouverte pour : ${sansAnnonce.map((x) => `n°${x}`).join(", ")}.`, "");
@@ -218,7 +228,7 @@ async function defausser(c, holo, t, premier) {
 
 for (const l of await mesAnnonces()) {
   const id = l.inst?.card_id, holo = !!l.inst?.holo, c = cards[id], t = parCarte.get(id);
-  if (!c || !t || !RAR[c.rarity]) continue;
+  if (!c || !t || !RAR[c.rarity] || !genVisee(c)) continue;
   // Annonce de surplus ? On la remet parmi les exemplaires disponibles et on regarde si
   // le script l'aurait choisie (même genre holo / normale).
   const avec = { holos: [...t.holos], simples: [...t.simples], enVente: t.enVente - 1 };
@@ -270,6 +280,7 @@ for (const [id, t] of parCarte) {
   const choix = choisir(t, niveauMax);
   if (!choix) continue;
   const c = cards[id];
+  if (!genVisee(c)) continue;
   if (!RAR[c?.rarity]) { ignorees.push(c?.name || id); continue; }
   const prix = prixDe(c.rarity, choix.holo);
   // Avec une grosse remise, le prix de départ tombe sur la valeur de défausse : on défausse direct.
@@ -280,7 +291,7 @@ if (baissees.length || defaussees.length) console.log("");
 // La génération la plus récente d'abord.
 aVendre.sort((a, b) => (b.gen || 1) - (a.gen || 1) || ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) || a.n - b.n);
 
-console.log(`${me.pseudo} : ${aVendre.length} carte(s) à mettre en vente (1 annonce par carte), remise de ${REMISE} %.${DRY ? "  (DRY-RUN : rien ne sera fait)" : ""}\n`);
+console.log(`${me.pseudo} : ${aVendre.length} carte(s) à mettre en vente (1 annonce par carte), remise de ${REMISE} %, générations : ${gensTexte}.${DRY ? "  (DRY-RUN : rien ne sera fait)" : ""}\n`);
 
 for (const c of aVendre) {
   if (!DRY) {
@@ -300,30 +311,32 @@ if (DRY) L.push("DRY-RUN : rien n'a été fait.", "");
 L.push(
   `${vendues.length} carte(s) ${verbe} avec une remise de ${REMISE} %, pour ${total} K au total si tout part. Une annonce à la fois par carte.`,
   "",
+  `Générations traitées : ${gensTexte}.`,
+  "",
   `Sans acheteur après ${PALIER_H} h, une annonce baisse de ${BAISSE} % du prix de référence, ${SANS_DEFAUSSE ? "jusqu'à la valeur de défausse." : "et la carte est défaussée dès qu'elle atteindrait la valeur de défausse."}`,
   "",
 );
-for (const r of ORDER) {
-  const g = vendues.filter((c) => c.rarity === r);
+for (const gen of [...new Set(vendues.map((c) => c.gen || 1))].sort((a, b) => b - a)) for (const r of ORDER) {
+  const g = vendues.filter((c) => (c.gen || 1) === gen && c.rarity === r);
   if (!g.length) continue;
-  L.push(`## ${RAR[r].name}`, "", "| N° | Carte | Exemplaire | Prix | Niveau max |", "|---:|---|---|---:|---|");
+  L.push(`## Génération ${gen} · ${RAR[r].name}`, "", "| N° | Carte | Exemplaire | Prix | Niveau max |", "|---:|---|---|---:|---|");
   for (const c of g) L.push(`| ${c.n} | ${c.name} | ${genre(c.holo)} | ${c.prix} K | ${c.niveauMax ? "Oui" : "Non"} |`);
   L.push("");
 }
 if (baissees.length) {
   L.push(`## Prix baissés (${baissees.length})`, "", "| N° | Carte | Exemplaire | Avant | Après |", "|---:|---|---|---:|---:|");
-  for (const b of baissees) L.push(`| ${b.carte.n} | ${b.carte.name} | ${genre(b.holo)} | ${b.avant} K | ${b.apres} K |`);
+  for (const b of baissees) L.push(`| ${b.carte.n} | ${nomDe(b.carte)} | ${genre(b.holo)} | ${b.avant} K | ${b.apres} K |`);
   L.push("");
 }
 if (defaussees.length) {
   const gain = defaussees.reduce((s, d) => s + d.gain, 0);
   L.push(`## Défaussées, personne n'en voulait (${defaussees.reduce((s, d) => s + d.nombre, 0)} exemplaire(s), +${gain} K)`, "", "| N° | Carte | Exemplaire | Nombre | Gain |", "|---:|---|---|---:|---:|");
-  for (const d of defaussees) L.push(`| ${d.carte.n} | ${d.carte.name} | ${genre(d.holo)} | ${d.nombre} | ${d.gain} K |`);
+  for (const d of defaussees) L.push(`| ${d.carte.n} | ${nomDe(d.carte)} | ${genre(d.holo)} | ${d.nombre} | ${d.gain} K |`);
   L.push("");
 }
 if (enAttente.length) {
   L.push(`## En vente, prochaine baisse plus tard (${enAttente.length})`, "", "| N° | Carte | Exemplaire | Prix | Prochaine baisse |", "|---:|---|---|---:|---|");
-  for (const a of enAttente) L.push(`| ${a.carte.n} | ${a.carte.name} | ${genre(a.holo)} | ${a.prix} K | après ${a.prochaine.toISOString().slice(0, 16).replace("T", " ")} UTC |`);
+  for (const a of enAttente) L.push(`| ${a.carte.n} | ${nomDe(a.carte)} | ${genre(a.holo)} | ${a.prix} K | après ${a.prochaine.toISOString().slice(0, 16).replace("T", " ")} UTC |`);
   L.push("");
 }
 if (echecs.length) {

@@ -9,6 +9,14 @@ on:
           - vendre
           - retirer
         default: vendre
+      generation:
+        description: "Générations concernées, pour vendre comme pour retirer"
+        type: choice
+        options:
+          - toutes
+          - "1"
+          - "2"
+        default: toutes
       remise:
         description: "Vendre : remise de départ en % par rapport au prix de référence"
         default: "20"
@@ -45,6 +53,7 @@ jobs:
       - run: |
           args=()
           if [ "$DRY" = "true" ]; then args+=(--dry); fi
+          if [ "$GENERATION" = "1" ] || [ "$GENERATION" = "2" ]; then args+=("--gen=$GENERATION"); fi
           if [ "$ACTION" = "retirer" ]; then
             if [ -n "$CARTES" ]; then args+=("--retirer=$CARTES"); else args+=(--retirer); fi
           else
@@ -56,6 +65,7 @@ jobs:
           REF_EMAIL: ${{ secrets.REF_EMAIL }}
           REF_PASS: ${{ secrets.REF_PASS }}
           ACTION: ${{ inputs.action }}
+          GENERATION: ${{ inputs.generation }}
           REMISE: ${{ inputs.remise || '20' }}
           BAISSE: ${{ inputs.baisse || '10' }}
           PALIER: ${{ inputs.palier || '24' }}
