@@ -1,6 +1,8 @@
 // Ouvre les boosters d'un compte avec bot.mjs.
 //
-//   npm run ouvrir --email=adresse@exemple.com --password='mot_de_passe'
+//   npm run ouvrir --email=adresse@exemple.com --password='mot_de_passe' --gen=2
+//
+// --gen (1 ou 2) est obligatoire : seuls les boosters de cette génération sont ouverts.
 
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -12,13 +14,14 @@ const option = (nom) =>
 
 const email = option("email")?.trim();
 const password = option("password");
+const gen = option("gen")?.trim();
 
-if (!email || !password) {
-  console.log("Indique le compte : npm run ouvrir --email=adresse@exemple.com --password='mot_de_passe'");
+if (!email || !password || !["1", "2"].includes(gen)) {
+  console.log("Indique le compte et la génération : npm run ouvrir --email=adresse@exemple.com --password='mot_de_passe' --gen=2");
   process.exit(1);
 }
 
-const bot = spawnSync(process.execPath, [join(import.meta.dirname, "..", "bot.mjs")], {
+const bot = spawnSync(process.execPath, [join(import.meta.dirname, "..", "bot.mjs"), `--gen=${gen}`], {
   env: { ...process.env, REF_EMAIL: email, REF_PASS: password },
   stdio: "inherit",
 });

@@ -37,7 +37,7 @@ FICHIER_COMPTES = DOSSIER / "compte-auto.json"
 DECK_SIZE = 6  # même valeur que duels.mjs
 # Secondes. Chaque script fait jusqu'à 2 connexions et le serveur les limite, sauf si elles sont réutilisées.
 PAUSE_ENTRE_SCRIPTS = 3 if os.environ.get("REF_SESSIONS") else 20
- 
+#PAUSE_ENTRE_SCRIPTS = 0
  
 def generer_pseudo(lettre=None):
     """Renvoie un pseudo crédible dont la première lettre est entre U et Z.
@@ -69,14 +69,14 @@ def lire_comptes():
     return comptes if isinstance(comptes, list) else [comptes]
 
 
-def rapatrier(joueur, principal, adversaire=None):
+def rapatrier(joueur, principal, gen, adversaire=None):
     """Ouvre les boosters, joue les duels contre l'adversaire s'il y en a un, puis renvoie tout au principal.
 
     Un échec est signalé sans arrêter le programme.
     """
     try:
         for compte in filter(None, (joueur, adversaire)):
-            ouvrir_boosters(compte["email"], compte["password"])
+            ouvrir_boosters(compte["email"], compte["password"], gen)
         if adversaire is None:
             transferer(joueur["email"], joueur["password"], principal["email"], principal["password"])
         else:
@@ -107,8 +107,8 @@ def creer_compte(email, pseudo=None, password=None):
     )
     return email, password, pseudo
 
-def ouvrir_boosters(email, password):
-    """Transfère cartes et Kheys du compte source vers le compte (email, password).
+def ouvrir_boosters(email, password, gen):
+    """Ouvre les boosters de la génération gen (1 ou 2) de ce compte.
 
     Lève CalledProcessError si le script échoue.
     """
@@ -118,6 +118,7 @@ def ouvrir_boosters(email, password):
             str(DOSSIER / "ouvrir.mjs"),
             f"--email={email}",
             f"--password={password}",
+            f"--gen={gen}",
         ],
     )
 
@@ -287,13 +288,20 @@ if __name__ == "__main__":
     email_principal, password_principal = principal["email"], principal["password"]
     print("Compte principal :", _masque(email_principal), "| comptes repris :", len(joueurs))
 
+    cartes_manquantes_gen2, cartes_gen2 = cartes_compte(email_principal, password_principal)
+    if cartes_manquantes_gen2 > 0:
+        print(f"Le compte principal a {cartes_manquantes_gen2} cartes manquantes de génération 2 : elles seront rapatriées.")
+        gen = 2
+    else:
+        gen = 1
+
     # Rapatrie ce qui serait resté sur les comptes secondaires lors d'une exécution coupée,
     # après les avoir fait jouer deux par deux. En nombre impair, le dernier joue contre l'avant-dernier.
     secondaires = joueurs[1:]
     if len(secondaires) % 2 and len(secondaires) > 1:
         secondaires.append(secondaires[-2])
     for joueur, adversaire in zip_longest(secondaires[::2], secondaires[1::2]):
-        rapatrier(joueur, principal, adversaire)
+        rapatrier(joueur, principal, gen, adversaire)
 
     cartes_manquantes, cartes = cartes_compte(email_principal, password_principal)
 
@@ -334,7 +342,7 @@ if __name__ == "__main__":
             print(f"Albums illisibles pour {_masque(joueur['email'])} : compte ignoré.")
             continue
         if joueur is not principal:
-            rapatrier(joueur, principal)
+            rapatrier(joueur, principal, gen)
 
     print("FINI ! Nombre de comptes créés :", len(joueurs))
     fin = cartes_compte(email_principal, password_principal)
