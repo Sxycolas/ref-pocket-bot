@@ -1,0 +1,18 @@
+# Mises à jour automatiques : une PR groupée par semaine et par écosystème.
+# Ne tourne que sur ce dépôt : GitHub ne l'active pas sur les forks par défaut.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
