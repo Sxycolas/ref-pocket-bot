@@ -35,7 +35,7 @@ MOTS = ["Wolf", "Shadow", "Storm", "Blade", "Fox", "Nova", "Ghost", "Fire", "Byt
 FICHIER_COMPTES = DOSSIER / "compte-auto.json"
 DECK_SIZE = 6  # même valeur que duels.mjs
 # Secondes. Chaque script fait jusqu'à 2 connexions et le serveur les limite, sauf si elles sont réutilisées.
-PAUSE_ENTRE_SCRIPTS = 3 if os.environ.get("REF_SESSIONS") else 20
+PAUSE_ENTRE_SCRIPTS = 3 if os.environ.get("REF_SESSIONS") else 4
 #PAUSE_ENTRE_SCRIPTS = 0
  
 def generer_pseudo(lettre=None):
@@ -88,9 +88,10 @@ def rapatrier(joueur, principal, gen, adversaire=None):
         print(f"Échec pour {_masque(joueur['email'])} : il sera retenté au prochain lancement.")
 
 
-def creer_compte(email, pseudo=None, password=None):
+def creer_compte(email, pseudo=None, password=None, gen=2):
     """Renvoie (email, password, pseudo), en générant le pseudo et le mot de passe absents.
 
+    gen : génération (1 ou 2) des boosters ouverts juste après la création.
     Le compte est aussi ajouté à compte-auto.json. Lève CalledProcessError si le script échoue.
     """
     pseudo = pseudo or f"Joueur{secrets.token_hex(4)}"
@@ -102,6 +103,7 @@ def creer_compte(email, pseudo=None, password=None):
             f"--email={email}",
             f"--password={password}",
             f"--pseudo={pseudo}",
+            f"--gen={gen}",
         ],
     )
     return email, password, pseudo
@@ -294,6 +296,8 @@ if __name__ == "__main__":
     else:
         gen = 1
 
+    ouvrir_boosters(email_principal, password_principal, gen)
+
     # Rapatrie ce qui serait resté sur les comptes secondaires lors d'une exécution coupée,
     # après les avoir fait jouer deux par deux. En nombre impair, le dernier joue contre l'avant-dernier.
     secondaires = joueurs[1:]
@@ -302,34 +306,29 @@ if __name__ == "__main__":
     for joueur, adversaire in zip_longest(secondaires[::2], secondaires[1::2]):
         rapatrier(joueur, principal, gen, adversaire)
 
-    cartes_manquantes, cartes = cartes_compte(email_principal, password_principal)
-
-    print("Nb_joueurs:", len(joueurs), "Nb_cartes_manquantes:", cartes_manquantes)
-
-    if new.lower() != "o":
-        exit(0)
-
     ### ETAPE 2 : créer des comptes secondaires et transférer leurs cartes vers le compte principal
 
-    sans_progres = 0
-    while cartes_manquantes > 0:
-        avant = cartes_manquantes
+    # Le compteur suit la génération que les nouveaux comptes ouvrent : un compte de Gén. 2
+    # n'apporte rien à la Gén. 1, donc un compteur toutes générations ne baisserait plus.
+    while True:
+        cartes_manquantes, cartes = cartes_compte(email_principal, password_principal, gen)
+        if cartes_manquantes == 0 and gen == 2:
+            print("Génération 2 complète : les comptes suivants ouvriront la génération 1.")
+            gen = 1
+            continue
+        print("Nb_joueurs:", len(joueurs), f"Nb_cartes_manquantes (Gén. {gen}):", cartes_manquantes)
+        if new.lower() != "o":
+            exit(0)
+        if cartes_manquantes == 0:
+            break
         try:
             pseudo = generer_pseudo()
-            email, password, pseudo = creer_compte(f"{pseudo.lower()}@exemple.com", pseudo)
+            email, password, pseudo = creer_compte(f"{pseudo.lower()}@exemple.com", pseudo, gen=gen)
             joueurs.append({"email": email, "password": password, "pseudo": pseudo})
             # Ici un échec arrête tout : sinon on créerait des comptes sans jamais avancer
             transferer(email, password, email_principal, password_principal)
         except subprocess.CalledProcessError as erreur:
             sys.exit(erreur.returncode)
-        cartes_manquantes, cartes = cartes_compte(email_principal, password_principal)
-        print("Nb_joueurs:", len(joueurs), "Nb_cartes_manquantes:", cartes_manquantes)
-        # bot.mjs ouvre la génération 2 en priorité alors que ce compteur ne suit que la génération 1 :
-        # sans cet arrêt, il ne baisserait plus et la boucle créerait des comptes sans fin.
-        sans_progres = 0 if cartes_manquantes < avant else sans_progres + 1
-        if sans_progres >= 3:
-            print("Arrêt : 3 comptes de suite sans nouvelle carte de génération 1.")
-            break
 
 
     ### ETAPE 3 : récupérer les récompenses des albums complétés et non réclamés des comptes

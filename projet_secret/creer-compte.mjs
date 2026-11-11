@@ -1,6 +1,7 @@
 // Crée un compte Ref Pocket, choisit son pseudo, puis ouvre ses boosters avec bot.mjs.
 //
 //   npm run compte -- --email=adresse@exemple.com --password='mot_de_passe' --pseudo=MonPseudo
+//   ... --gen=1                                     -> ouvre des boosters de Gén. 1 (Gén. 2 par défaut)
 //
 // Chaque compte est ajouté à compte-auto.json (jamais commité).
 
@@ -31,6 +32,11 @@ if (!email || !password || !pseudo) {
 if (!/^\S+@\S+\.\S+$/.test(email)) stop("Adresse e-mail invalide.");
 if (password.length < 6) stop("Le mot de passe doit faire au moins 6 caractères.");
 if (pseudo.length < 3 || pseudo.length > 20) stop("Le pseudo doit faire entre 3 et 20 caractères.");
+
+// Vérifié avant l'inscription : un « --gen 1 » mal écrit ouvrirait sinon des boosters de Gén. 2
+const genArg = process.argv.find((a) => a.startsWith("--gen"));
+const gen = genArg ? genArg.split("=")[1] : "2";
+if (!["1", "2"].includes(gen)) stop("--gen attend 1 ou 2 (ex. --gen=1).");
 
 // Lu avant l'inscription : un fichier illisible doit arrêter le script, pas être écrasé
 const sauvegarde = existsSync(FICHIER) ? JSON.parse(readFileSync(FICHIER, "utf8")) : [];
@@ -79,7 +85,7 @@ if (profil.data?.id) {
   log(`Profil créé : ${pseudo}`);
 }
 
-const bot = spawnSync(process.execPath, [join(import.meta.dirname, "..", "bot.mjs")], {
+const bot = spawnSync(process.execPath, [join(import.meta.dirname, "..", "bot.mjs"), `--gen=${gen}`], {
   env: { ...process.env, REF_EMAIL: email, REF_PASS: password },
   stdio: "inherit",
 });
