@@ -7,306 +7,323 @@
 > README a été relu, le reste est susceptible d'avoir des erreurs.**
 > Si le créateur du jeu passe par là, n'hésite pas à visiter [cette page](CHEAT.md).
 
-Petits scripts d'automatisation pour **Ref Pocket**, le jeu de cartes à collectionner.
-Chaque script se connecte à **ton** compte (via l'API Supabase du jeu, exactement comme
-l'appli) et fait une tâche : ouvrir les boosters, améliorer les cartes, lister ce
-qui te manque, lister tes doublons, vendre tes doublons inutiles, auditer ce que la base
-expose.
+Automatise les tâches répétitives de **Ref Pocket**, le jeu de cartes à collectionner :
+ouvrir tes boosters toutes les heures, améliorer tes cartes, vendre tes doublons, jouer tes
+duels du jour et savoir ce qui te manque. Tout tourne gratuitement sur GitHub, sans rien
+installer.
 
-> ⚠️ Ces scripts agissent sur **ton** compte avec **tes** identifiants. Ils
-> n'utilisent que les fonctions publiques du jeu (mêmes droits qu'un joueur normal
-> dans l'appli) : rien n'est « piraté », tout passe par les règles du serveur.
+> [!CAUTION]
+> **Les risques, avant de commencer :**
+> - Automatiser un jeu peut aller contre ses règles : ton compte peut être **banni**. Voir
+>   [CHEAT.md](CHEAT.md) pour ce qui pourrait poser problème.
+> - Certaines actions sont **définitives** : une carte défaussée ou vendue ne revient pas.
+> - Les scripts agissent sur **ton** compte avec **tes** identifiants. Ils ne quittent jamais
+>   tes secrets GitHub (ou ton fichier `.env` en local).
 
-## Pour l'utiliser sur ton compte
+## Sommaire
 
-Le dépôt est prévu pour être **forké** : tu fais ta propre copie, tu y mets tes
-identifiants (dans **tes** secrets, jamais dans le code), et tu lances les scripts.
+- [Ce que ça fait](#ce-que-ça-fait)
+- [Démarrage rapide (5 minutes)](#démarrage-rapide-5-minutes)
+- [Automatiser avec cron-job.org](#automatiser-avec-cron-joborg)
+- [Réglages](#réglages) : [boosters](#ouvrir-les-boosters) · [améliorer](#améliorer-les-cartes) ·
+  [vendre](#vendre-les-doublons) · [retirer](#retirer-des-annonces) · [duels](#duels-du-jour) ·
+  [rapports](#rapports)
+- [Compte secondaire (pour les duels)](#compte-secondaire-pour-les-duels)
+- [Utilisation en local](#utilisation-en-local)
+- [Dépannage](#dépannage)
+- [Mettre à jour ton fork](#mettre-à-jour-ton-fork)
+- [Pour les curieux](#pour-les-curieux)
 
-1. **Fork** : en haut à droite de la page GitHub du projet, clique sur **Fork**.
-   Tu obtiens `https://github.com/<TON-COMPTE>/ref-pocket-bot`.
-2. Ensuite, deux façons de t'en servir :
-   - **Automatisé** via GitHub Actions + cron-job.org (recommandé, rien à installer) ;
-   - **En local** sur ta machine (section *Utilisation en local*).
+## Ce que ça fait
+
+| Je veux… | Workflow GitHub | En local | Rapport |
+|---|---|---|---|
+| Ouvrir mes boosters dès qu'ils sont disponibles | Booster horaire | `npm run boosters` | — |
+| Améliorer toutes les cartes qui peuvent l'être | Amélioration des cartes | `npm run ameliore` | `ameliorations.md` |
+| Vendre mes doublons inutiles, puis baisser leur prix s'ils ne partent pas | Vente des doublons inutiles | `npm run vendre` | `ventes.md` |
+| Retirer mes annonces du marché | Retrait des annonces | `npm run vendre -- --retirer` | `ventes.md` |
+| Jouer mes 10 duels récompensés du jour (+300 K) | Duels du jour contre le bot | `npm run duels` | `duels.md` |
+| Savoir quelles cartes il me manque | Cartes manquantes | `npm run manquantes` | `cartes-manquantes.md` |
+| Voir mes cartes en plusieurs exemplaires | Cartes en doublon | `npm run doublons` | `doublons.md` |
+
+Les duels demandent un [compte secondaire](#compte-secondaire-pour-les-duels) qui te sert
+d'adversaire. Tout le reste fonctionne avec ton seul compte.
+
+> L'onglet *Actions* affiche aussi **« Rapatrier les comptes »** : c'est un usage personnel de
+> l'auteur. Ignore-le, il échoue sans configuration particulière.
+
+## Démarrage rapide (5 minutes)
+
+1. **Copie le projet** : en haut à droite de cette page GitHub, clique sur **Fork**, puis sur
+   **Create fork**. Tu as maintenant ta propre copie, `https://github.com/<TON-COMPTE>/ref-pocket-bot`.
+2. **Active les workflows** : dans ta copie, ouvre l'onglet **Actions** et clique sur
+   **« I understand my workflows, go ahead and enable them »**.
+3. **Ajoute tes identifiants Ref Pocket** : **Settings → Secrets and variables → Actions →
+   New repository secret**, deux fois :
+
+   | Name | Secret |
+   |---|---|
+   | `REF_EMAIL` | ton e-mail Ref Pocket |
+   | `REF_PASS` | ton mot de passe Ref Pocket, tel quel, **sans** guillemets |
+
+4. **Lance un premier workflow** : onglet **Actions** → **Booster horaire** (dans la liste à
+   gauche) → **Run workflow** → **Run workflow**.
+5. **Vérifie** : au bout d'une minute, le run doit être vert ✅. Clique dessus pour voir ce qui
+   a été fait. Pour les workflows qui écrivent un rapport, il s'affiche en bas du run et se
+   télécharge dans *Artifacts*.
+
+C'est tout : chaque workflow se lance maintenant avec **Run workflow**. Pour qu'ils tournent
+tout seuls (toutes les heures, tous les jours…), passe à l'étape suivante.
 
 Dans tout ce README, remplace `<TON-COMPTE>` par ton nom d'utilisateur GitHub.
 
-> Pas besoin de toucher au code : l'adresse du jeu et la clé publique Supabase sont
-> les mêmes pour tout le monde (ce sont celles de l'appli). Seuls **tes identifiants**
-> changent, et ils ne vont jamais dans le dépôt.
+## Automatiser avec cron-job.org
 
-## Les scripts
+[cron-job.org](https://cron-job.org) est un service gratuit qui lance tes workflows à
+l'heure que tu veux. Il est bien plus ponctuel que la planification intégrée à GitHub.
 
-| Script | Commande | Ce qu'il fait | Écrit |
-|---|---|---|---|
-| `bot.mjs` | `npm run bot` | Ouvre les boosters disponibles : la Génération 2 d'abord, puis les boosters achetés réservés à la Génération 1. `npm run bot -- --gen=1` (ou `2`) n'ouvre que cette génération | — |
-| `ameliore-cartes.mjs` | `npm run ameliore` | Améliore les cartes qui peuvent l'être, dans les raretés choisies, et explique pourquoi les autres ne le peuvent pas | `ameliorations.md` |
-| `cartes-manquantes.mjs` | `npm run manquantes` | Liste les cartes du catalogue que tu n'as pas. Si un compte bot est configuré, signale celles qu'il possède et qu'il peut te transférer | `cartes-manquantes.md` |
-| `doublons.mjs` | `npm run doublons` | Liste toutes tes cartes en plusieurs exemplaires (total, holos, simples) | `doublons.md` |
-| `vendre.mjs` | `npm run vendre` | Met en vente à prix réduit les holos en double et les doublons des cartes au niveau max, baisse le prix de ce qui ne part pas puis le défausse (voir *Vendre les doublons inutiles*) | `ventes.md` |
-| `duels.mjs` | `npm run duels` | Joue tes 10 duels récompensés du jour contre ton compte bot (voir *Duels contre ton compte bot*) | `duels.md` |
-| `profils.mjs` | `npm run profils` | Audit : ce que la base laisse voir des profils des autres joueurs | `profils.json` |
+### Étape 1 : créer un jeton GitHub
 
-Les rapports de `cartes-manquantes.mjs` et `doublons.mjs` sont classés par génération, la plus
-récente en premier. `ameliore-cartes.mjs` et `vendre.mjs` traitent aussi la Génération 2 en premier.
+Sur GitHub : ta photo en haut à droite → **Settings → Developer settings → Personal access
+tokens → Fine-grained tokens → Generate new token** :
 
-## Exécution sur GitHub Actions
+- **Expiration** : choisis la durée la plus longue proposée, et **note la date** : à
+  l'expiration, tout s'arrête sans prévenir et il faudra en créer un nouveau.
+- **Repository access** : *Only select repositories* → `<TON-COMPTE>/ref-pocket-bot`.
+- **Permissions → Repository permissions → Actions** : **Read and write**.
+- **Generate token**, puis **copie le jeton** : il ne sera plus jamais affiché.
 
-C'est la façon la plus simple : rien à installer, tout tourne sur les serveurs de
-GitHub. Chaque script a un workflow dans [`.github/workflows/`](.github/workflows/).
-Ils se lancent **à la main** (bouton « Run workflow » dans l'onglet *Actions*) ou par
-un déclencheur externe (voir cron-job.org plus bas). Le résultat s'affiche dans le
-résumé du run et se télécharge en artefact.
+### Étape 2 : créer un cronjob par workflow
 
-| Workflow | Fichier |
-|---|---|
-| Booster horaire | `booster.yml` |
-| Amélioration des cartes | `ameliore.yml` |
-| Cartes manquantes | `cartes-manquantes.yml` |
-| Cartes en doublon | `doublons.yml` |
-| Vente des doublons inutiles | `vendre.yml` |
-| Retrait des annonces | `retirer.yml` |
-| Duels du jour contre le bot | `duels.yml` |
+Sur cron-job.org → **Create cronjob** :
 
-### 1. Activer les Actions sur ton fork
-
-Sur un dépôt forké, GitHub désactive les workflows par défaut. Va dans l'onglet
-**Actions** de ton fork et clique sur **« I understand my workflows, go ahead and
-enable them »**.
-
-### 2. Mettre tes identifiants dans les secrets de ton fork
-
-Sur **ton fork** : **Settings → Secrets and variables → Actions → New repository secret**.
-Créer **deux** secrets (ne pas les mettre ailleurs, surtout pas dans le code) :
-
-| Nom du secret | Valeur |
-|---|---|
-| `REF_EMAIL` | ton email Ref Pocket |
-| `REF_PASS` | ton mot de passe Ref Pocket (tel quel, **sans** guillemets) |
-
-Les workflows lisent ces secrets via `${{ secrets.REF_EMAIL }}` / `${{ secrets.REF_PASS }}`.
-
-Pour les duels, il faut en plus les secrets d'un compte bot : voir *Rajouter un bot*.
-
-## Automatiser avec cron-job.org (recommandé)
-
-Le `cron:` intégré de GitHub Actions est imprécis (déclenchements souvent reportés
-de plusieurs dizaines de minutes, voire sautés). On garde donc les workflows en
-**déclenchement manuel** (`workflow_dispatch`) et on les déclenche depuis
-l'extérieur avec [cron-job.org](https://cron-job.org), gratuit et ponctuel.
-
-cron-job.org appelle l'API GitHub qui lance le workflow. Il faut un jeton d'accès.
-
-### Étape A — Créer un jeton GitHub (PAT)
-
-Sur **ton** compte GitHub → **Settings → Developer settings → Personal access tokens
-→ Fine-grained tokens → Generate new token** :
-
-- **Repository access** : *Only select repositories* → `<TON-COMPTE>/ref-pocket-bot`
-- **Permissions → Repository permissions → Actions** : **Read and write**
-- Générer et **copier** le jeton (il ne sera plus affiché).
-
-> Avec un token « classic » à la place, il faut les scopes `repo` + `workflow`.
-
-### Étape B — Créer un cronjob par workflow
-
-Dans cron-job.org → **Create cronjob**, pour chaque workflow à automatiser :
-
-- **URL** (remplace `<TON-COMPTE>` et `<FICHIER>` par `ameliore.yml`, `doublons.yml`, etc.) :
+- **URL**, en remplaçant `<TON-COMPTE>` et `<FICHIER>` (voir le tableau plus bas) :
   ```
   https://api.github.com/repos/<TON-COMPTE>/ref-pocket-bot/actions/workflows/<FICHIER>/dispatches
   ```
-- **Request method** : `POST`
-- **Advanced → Headers** :
-  | Clé | Valeur |
-  |---|---|
-  | `Authorization` | `Bearer TON_JETON` |
-  | `Accept` | `application/vnd.github+json` |
-  | `X-GitHub-Api-Version` | `2022-11-28` |
-  | `Content-Type` | `application/json` |
-- **Advanced → Request body** :
-  ```json
-  {"ref":"main"}
-  ```
-- **Schedule** : l'horaire voulu (ex. tous les jours, ou toutes les heures pour le booster).
+- **Schedule** : le rythme voulu (voir le tableau).
+- Onglet **Advanced** :
+  - **Request method** : `POST`
+  - **Headers** :
 
-Une réponse **HTTP 204** = le workflow a bien été lancé (va voir l'onglet *Actions*).
+    | Key | Value |
+    |---|---|
+    | `Authorization` | `Bearer TON_JETON` |
+    | `Accept` | `application/vnd.github+json` |
+    | `Content-Type` | `application/json` |
 
-### Exemple de rythme
+  - **Request body** : le JSON du tableau.
 
-| Workflow | Fréquence conseillée |
+Teste avec le bouton de test de cron-job.org (*Test run*) : une réponse **204** veut dire que
+le workflow est lancé (va voir l'onglet *Actions*). Sinon, voir [Dépannage](#dépannage).
+
+### Les cronjobs à créer
+
+| Pour… | `<FICHIER>` | Request body | Rythme conseillé |
+|---|---|---|---|
+| Ouvrir les boosters | `booster.yml` | `{"ref":"main"}` | toutes les heures |
+| Améliorer les cartes | `ameliore.yml` | `{"ref":"main"}` | 1×/jour |
+| Vendre les doublons | `vendre.yml` | `{"ref":"main"}` | 1×/jour |
+| Jouer les duels | `duels.yml` | `{"ref":"main"}` | 1×/jour, après 1 h du matin (heure de Paris) |
+| Rapports | `cartes-manquantes.yml`, `doublons.yml` | `{"ref":"main"}` | quand tu veux |
+
+Le body accepte aussi des réglages, dans `inputs` (les valeurs toujours **entre guillemets**).
+Quelques exemples :
+
+| Je veux… | Request body |
 |---|---|
-| `booster.yml` | toutes les heures (les boosters se rechargent avec le temps) |
-| `ameliore.yml` | 1×/jour (ou à la main) |
-| `doublons.yml` / `cartes-manquantes.yml` | quand tu veux un rapport à jour |
-| `vendre.yml` | 1×/jour (la baisse des prix se fait par palier de 24 h) |
-| `duels.yml` | 1×/jour, après minuit UTC (le compteur des 10 duels repart à zéro à minuit UTC) |
+| Vendre la Gén. 1 à -20 % et la Gén. 2 à +100 %, avec une baisse de 10 % tous les 2 jours | `{"ref":"main","inputs":{"remise_gen1":"20","remise_gen2":"-100","baisse":"10","palier":"48"}}` |
+| Vendre sans jamais rien défausser | `{"ref":"main","inputs":{"defausser":"false"}}` |
+| N'améliorer que la Gén. 2 | `{"ref":"main","inputs":{"generation":"2"}}` |
+| Ne pas améliorer les communes | `{"ref":"main","inputs":{"communes":"false"}}` |
+
+Tous les réglages possibles sont décrits dans la section suivante.
+
+## Réglages
+
+Chaque fonctionnalité se règle de trois façons :
+- **Sur GitHub** : les champs du formulaire **Run workflow** ;
+- **Avec cron-job.org** : les mêmes champs, dans `inputs` du body ;
+- **En local** : les options après `--` (voir [Utilisation en local](#utilisation-en-local)).
+
+### Ouvrir les boosters
+
+Ouvre tous les boosters disponibles, la Génération 2 d'abord. Si un
+[compte secondaire](#compte-secondaire-pour-les-duels) est configuré, ses boosters sont
+ouverts aussi.
+
+| Sur GitHub / cron-job.org | En local | Effet |
+|---|---|---|
+| — | `--gen=1` ou `--gen=2` | n'ouvre que cette génération |
+
+### Améliorer les cartes
+
+Améliore toutes les cartes qui peuvent l'être. Le rapport explique pourquoi les autres ne
+peuvent pas : les holos et les cartes en vente ne comptent jamais comme doublons.
+
+| Sur GitHub / cron-job.org | En local | Effet |
+|---|---|---|
+| `legendaires`, `epiques`, `rares`, `communes` : `"true"` / `"false"` | `--raretes=L,E,R,C` | raretés traitées (toutes par défaut) |
+| `generation` : `"toutes"`, `"1"`, `"2"` | `--gen=1` ou `--gen=2` | générations traitées |
+| — | `--dry` | explique sans rien améliorer |
+
+### Vendre les doublons
+
+Met en vente sur le marché les exemplaires qui ne te servent plus :
+- **les holos en double** (une holo est toujours gardée par carte) ;
+- **sur une carte au niveau maximum**, tout ce qui dépasse 2 exemplaires.
+
+Ensuite, à chaque lancement :
+- une annonce restée sans acheteur trop longtemps **baisse de prix** ;
+- quand le prix atteindrait la valeur de défausse, la carte est **défaussée** : la vendre à
+  ce prix ne rapporterait pas plus ;
+- **une seule annonce à la fois par carte** : l'exemplaire suivant part en vente au lancement
+  d'après ;
+- **tes annonces posées à la main ne sont jamais touchées**.
+
+Le prix de départ part du prix de référence du jeu : Commune 20 K, Rare 60 K, Épique 200 K,
+Légendaire 800 K, × 3 pour une holo.
+
+| Sur GitHub / cron-job.org | En local | Effet | Par défaut |
+|---|---|---|---|
+| `remise` | `--remise=20` | prix de départ en % sous la référence. **Négatif = plus cher** : `-30` vend 30 % au-dessus | `20` |
+| `remise_gen1`, `remise_gen2` | `--remise-gen1=…`, `--remise-gen2=…` | la même chose, pour une seule génération (vide = `remise`) | — |
+| `baisse` | `--baisse=10` | baisse en % de la référence à chaque palier | `10` |
+| `palier` | `--palier=24` | heures sans acheteur avant chaque baisse | `24` |
+| `defausser` : `"false"` | `--sans-defausse` | ne défausse jamais : la carte reste en vente au prix minimum | défausse |
+| `generation` : `"toutes"`, `"1"`, `"2"` | `--gen=1` ou `--gen=2` | générations traitées | toutes |
+| `dry` : `"true"` | `--dry` | affiche ce qui serait fait, sans rien faire | — |
+
+Exemple : une commune normale part à 16 K, puis 14 K, 12 K… jusqu'à 6 K, et elle est
+défaussée (+5 K) si personne ne l'a achetée.
+
+> ⚠️ La défausse est **définitive**. Fais d'abord un test à blanc pour voir ce qui serait
+> vendu, baissé ou défaussé.
+
+### Retirer des annonces
+
+Retire tes annonces encore ouvertes. Pratique avant de changer tes réglages de prix.
+
+| Sur GitHub / cron-job.org | En local | Effet |
+|---|---|---|
+| `cartes` : `"141,176"` | `--retirer=141,176` | seulement ces numéros de carte (vide = **toutes** les annonces) |
+| `generation` : `"toutes"`, `"1"`, `"2"` | `--gen=1` ou `--gen=2` | seulement cette génération |
+| `dry` : `"true"` | `--dry` | affiche ce qui serait retiré |
+
+Les numéros sont ceux affichés sur le site. La Gén. 2 a ses propres numéros, qui repartent à 1 :
+choisis la génération pour viser une seule carte.
+
+> ⚠️ Sans numéros, **toutes** tes annonces sont retirées, même celles posées à la main dans
+> l'appli. Une carte retirée mais encore en surplus repartira en vente au prochain lancement
+> de la vente : pense à couper le cronjob si tu ne veux plus vendre.
+
+### Duels du jour
+
+Joue tes **10 duels récompensés** du jour contre ton
+[compte secondaire](#compte-secondaire-pour-les-duels) : +30 K par victoire, soit +300 K par
+jour pour toi et +100 K pour le compte secondaire. À chaque victoire, tu gagnes une de ses
+cartes, en priorité une carte que tu n'as pas. Le compteur repart à zéro à minuit UTC
+(1 h du matin à Paris en hiver, 2 h en été).
+
+| Sur GitHub / cron-job.org | En local | Effet | Par défaut |
+|---|---|---|---|
+| `mode` : `"abandon"` ou `"jouer"` | `--mode=jouer` | `abandon` : l'adversaire abandonne tout de suite ; `jouer` : les deux comptes jouent les coups | `abandon` |
+| `nombre` : `"3"` | `--nombre=3` | nombre maximum de duels | tous ceux qui restent |
+| `dry` : `"true"` | `--dry` | vérifie les comptes et les decks, sans jouer | — |
+
+### Rapports
+
+- **Cartes manquantes** : les cartes que tu n'as pas, par génération et par rareté. Si un
+  [compte secondaire](#compte-secondaire-pour-les-duels) est configuré, celles qu'il possède
+  sont marquées `🤖 x2` (le nombre d'exemplaires qu'il pourrait te donner).
+- **Cartes en doublon** : tes cartes en plusieurs exemplaires, avec le nombre de holos et
+  d'exemplaires en vente.
+
+Les numéros de carte sont ceux du site. Une carte qui ne sort plus des boosters est notée « HS ».
+
+## Compte secondaire (pour les duels)
+
+Les duels se jouent contre un **second compte Ref Pocket**, qui te sert d'adversaire. Les
+scripts l'appellent « le bot ». Il ne sert qu'aux duels et au marquage `🤖` des cartes
+manquantes.
+
+1. **Crée le compte** : inscris-toi sur Ref Pocket avec une autre adresse e-mail et choisis
+   un pseudo. Inutile de l'ajouter en ami : c'est automatique.
+2. **Ajoute ses identifiants** : deux secrets de plus, au même endroit que les tiens
+   (**Settings → Secrets and variables → Actions**) :
+
+   | Name | Secret |
+   |---|---|
+   | `BOT_EMAIL` | l'e-mail du compte secondaire |
+   | `BOT_PASS` | son mot de passe, tel quel, **sans** guillemets |
+
+3. **C'est tout** : il lui faut au moins 6 cartes différentes pour jouer, mais *Booster
+   horaire* ouvre maintenant ses boosters aussi, et *Duels du jour* les ouvre avant chaque série.
+4. **Vérifie** : lance *Duels du jour contre le bot* avec **dry** coché. Le run affiche les deux
+   decks sans jouer.
 
 ## Utilisation en local
 
-Si tu préfères lancer les scripts depuis ta machine :
+Pour lancer les scripts depuis ton ordinateur plutôt que sur GitHub.
 
-1. **Cloner ton fork** et installer Node 22+ puis les dépendances :
+1. Installe [Node.js](https://nodejs.org) 22 ou plus récent.
+2. Récupère ta copie et installe les dépendances :
    ```bash
    git clone https://github.com/<TON-COMPTE>/ref-pocket-bot.git
    cd ref-pocket-bot
    npm install
    ```
-2. Créer un fichier `.env` à partir du modèle et y mettre tes identifiants Ref Pocket :
+3. Crée ton fichier d'identifiants à partir du modèle :
    ```bash
    cp .env.example .env
-   # puis éditer .env :
-   # REF_EMAIL=ton.email@exemple.com
-   # REF_PASS=ton_mot_de_passe
    ```
-   Le `.env` n'est **jamais** commité (il est dans `.gitignore`). Pour les duels, il faut
-   aussi les identifiants d'un compte bot : voir *Rajouter un bot*.
-   > Astuce : mets ton mot de passe entre guillemets simples si il contient des
-   > caractères spéciaux (ex. `REF_PASS='mon#pass'`).
-3. Lancer ce que tu veux, par exemple :
+   Puis ouvre `.env` et remplis-le :
+   ```bash
+   REF_EMAIL=ton.email@exemple.com
+   REF_PASS='ton_mot_de_passe'
+   # Facultatif, pour les duels :
+   BOT_EMAIL=email.du.compte.secondaire@exemple.com
+   BOT_PASS='son_mot_de_passe'
+   ```
+   Garde les guillemets simples autour des mots de passe : ils protègent les caractères
+   spéciaux comme `#`. Le fichier `.env` reste sur ton ordinateur, il n'est jamais envoyé sur GitHub.
+4. Lance ce que tu veux. Les options s'ajoutent après `--` :
    ```bash
    npm run manquantes
-   npm run doublons
-   npm run ameliore
+   npm run vendre -- --dry
+   npm run vendre -- --remise-gen2=-50
+   npm run ameliore -- --raretes=L,E --gen=2
+   npm run duels -- --nombre=1
    ```
-
-## Rajouter un bot
-
-Le bot est un **second compte Ref Pocket** qui te sert d'adversaire pour les duels
-(`duels.mjs`). `cartes-manquantes.mjs` s'en sert aussi, s'il est configuré, pour signaler les
-cartes qui te manquent et que le bot peut te transférer. Les autres scripts n'en ont pas besoin.
-
-1. **Créer le compte** : inscris-toi sur Ref Pocket avec une autre adresse email et choisis-lui
-   un pseudo. Pas besoin de l'ajouter en ami : `duels.mjs` le fait tout seul.
-2. **Donner ses identifiants**, au même endroit que les tiens :
-   - **sur GitHub Actions**, deux secrets de plus (**Settings → Secrets and variables →
-     Actions → New repository secret**) :
-
-     | Nom du secret | Valeur |
-     |---|---|
-     | `BOT_EMAIL` | l'email du compte bot |
-     | `BOT_PASS` | le mot de passe du compte bot (tel quel, **sans** guillemets) |
-
-   - **en local**, deux lignes de plus dans ton `.env` (le modèle `.env.example` les contient) :
-     ```bash
-     BOT_EMAIL=email.du.bot@exemple.com
-     BOT_PASS='mot_de_passe_du_bot'
-     ```
-3. **Lui donner des cartes** : il lui faut au moins **6 cartes différentes** pour composer un
-   deck, et il en perd une à chaque duel. Rien à faire à la main : dès que les secrets
-   `BOT_EMAIL` / `BOT_PASS` existent, `booster.yml` ouvre aussi ses boosters toutes les heures,
-   et `duels.yml` les ouvre avant chaque série. En local, donne ses identifiants à `npm run bot`
-   (ceux de la ligne de commande passent avant ceux du `.env`) :
+   Pour ouvrir les boosters du compte secondaire :
    ```bash
-   REF_EMAIL='email.du.bot@exemple.com' REF_PASS='mot_de_passe_du_bot' npm run bot
+   REF_EMAIL='email.du.compte.secondaire@exemple.com' REF_PASS='son_mot_de_passe' npm run boosters
    ```
-4. **Vérifier** : `npm run duels -- --dry` (ou *Test à blanc* dans `duels.yml`) connecte les deux
-   comptes et affiche les deux decks, sans jouer.
 
-## Choisir les raretés à améliorer
+## Dépannage
 
-Par défaut, `npm run ameliore` traite toutes les raretés. Pour n'en traiter que certaines :
+| Ce que tu vois | Ce qu'il faut faire |
+|---|---|
+| Aucun workflow dans l'onglet *Actions* | Les workflows ne sont pas activés : voir l'étape 2 du [démarrage rapide](#démarrage-rapide-5-minutes). |
+| `Connexion impossible : Invalid login credentials` | E-mail ou mot de passe erroné dans les secrets. Recrée le secret, sans guillemets ni espace en trop. |
+| `REF_EMAIL / REF_PASS manquants` | Le secret n'existe pas, ou son nom est mal écrit (majuscules comprises). |
+| `Profil introuvable` | Le compte n'a pas encore de pseudo : connecte-toi une fois sur le site pour le choisir. |
+| cron-job.org répond **401** | Jeton GitHub erroné ou expiré : crée-en un nouveau. |
+| cron-job.org répond **403** | Le jeton n'a pas la permission *Actions : Read and write*. |
+| cron-job.org répond **404** | Erreur dans l'URL (`<TON-COMPTE>`, nom du fichier), ou le jeton n'a pas accès à ce dépôt. |
+| cron-job.org répond **422** | Body invalide : branche qui ne s'appelle pas `main`, réglage mal écrit dans `inputs`, ou valeur sans guillemets. |
+| `Le compte bot n'a pas 6 cartes différentes` | Lance *Booster horaire* et attends que ses boosters se rechargent. |
+| `BOT_EMAIL / BOT_PASS manquants` | Ajoute les secrets du [compte secondaire](#compte-secondaire-pour-les-duels). |
 
-- **Sur GitHub Actions** : décoche les raretés à ignorer dans le formulaire « Run workflow ».
-- **En local** : `npm run ameliore -- --raretes=L,E` (`L` Légendaire, `E` Épique, `R` Rare,
-  `C` Commune).
-- **Avec cron-job.org** : ajoute les raretés à ignorer dans le corps de la requête, par exemple
-  `{"ref":"main","inputs":{"communes":"false"}}`.
+## Mettre à jour ton fork
 
-Pour n'améliorer qu'une génération, toutes les générations étant traitées par défaut :
+Quand le projet évolue, ta copie ne se met pas à jour toute seule. Sur la page de ton fork,
+clique sur **Sync fork → Update branch**. Tes secrets et tes cronjobs sont conservés.
 
-- **Sur GitHub Actions** : choisis `1` ou `2` dans « Générations à améliorer » du formulaire « Run workflow ».
-- **En local** : `npm run ameliore -- --gen=2`, qui se combine avec `--raretes`.
-- **Avec cron-job.org** : `{"ref":"main","inputs":{"generation":"2"}}`.
+## Pour les curieux
 
-## Vendre les doublons inutiles
-
-`npm run vendre` met en vente sur le marché du jeu les exemplaires qui ne te servent plus :
-
-- **Les holos en double** : 1 holo est gardée par carte, car elle reste utile en duel (Éclat
-  holo : +3 dégâts à la première attaque). Une carte avec 1 holo et des exemplaires normaux
-  n'est donc pas touchée.
-- **Les cartes au niveau maximum (5)** : tout ce qui dépasse 2 exemplaires, car elles ne
-  peuvent plus monter.
-
-Comment ça se passe :
-
-- **Prix** : le prix de référence du jeu moins 20 %, sans descendre sous la valeur de défausse.
-  Référence d'une normale : Commune 20 K, Rare 60 K, Épique 200 K, Légendaire 800 K (× 3 pour
-  une holo), la même pour les deux générations. Une remise négative est une majoration :
-  `--remise=-30` vend 30 % au-dessus de la référence. `--remise-gen1` / `--remise-gen2` donnent
-  une remise propre à une génération, par exemple pour vendre la Gén. 2 plus cher.
-- **Une annonce à la fois par carte**, pour varier les offres. Quand elle est vendue, relance
-  le script pour mettre en vente l'exemplaire suivant.
-- **Baisse progressive** : une annonce restée **24 h** sans acheteur est retirée et remise en
-  vente **10 %** du prix de référence moins cher.
-- **Défausse** : dès que la baisse atteindrait la valeur de défausse, la carte est **défaussée
-  tout de suite** : la vendre à ce prix ne rapporterait pas plus. Les autres exemplaires en
-  surplus du même genre (holo ou normale) de cette carte partent avec. Exemple pour une commune
-  normale : 16 K → 14 K → 12 K → 10 K → 8 K → 6 K → défaussée (+5 K). Pareil si le prix de
-  départ tombe déjà sur la valeur de défausse (remise de 75 % ou plus). `--sans-defausse` ne
-  défausse jamais rien : la carte reste en vente au prix plancher.
-- **Tes annonces à toi sont respectées** : la baisse ne touche que les annonces de surplus au
-  prix de départ du script ou moins cher. Une annonce posée à la main plus cher, ou sur une
-  carte qui n'est pas en surplus, n'est jamais modifiée.
-- **Tu peux le relancer** : ce qui est déjà en vente ou dans un échange n'est pas touché.
-
-```bash
-npm run vendre -- --dry          # affiche ce qui serait vendu, sans rien faire
-npm run vendre                   # met en vente pour de vrai
-npm run vendre -- --remise=40    # change la remise de départ (jusqu'à 90 %)
-npm run vendre -- --remise=-30   # majoration : 30 % au-dessus de la référence
-npm run vendre -- --remise-gen2=-50   # Gén. 2 à 50 % au-dessus, Gén. 1 avec la remise habituelle
-npm run vendre -- --baisse=15 --palier=12   # baisse de 15 % toutes les 12 h sans acheteur
-npm run vendre -- --sans-defausse           # ne défausse jamais rien
-npm run vendre -- --retirer            # retire toutes tes annonces ouvertes
-npm run vendre -- --retirer=141,176    # retire seulement ces numéros de carte
-npm run vendre -- --retirer --dry      # affiche ce qui serait retiré, sans rien faire
-npm run vendre -- --gen=2              # seulement la Génération 2 (ou 1), combinable avec le reste
-```
-
-Sur GitHub Actions, le formulaire « Run workflow » de `vendre.yml` propose les mêmes choix :
-
-- **generation** : `toutes` (par défaut), `1` ou `2`. Le choix s'applique aux annonces, aux baisses et aux défausses ;
-- **remise**, **remise_gen1**, **remise_gen2**, **baisse**, **palier**, **defausser** : les réglages de prix ci-dessus (les remises par génération vides reprennent **remise**) ;
-- **dry** : test à blanc.
-
-Les retraits ont leur propre workflow, `retirer.yml` :
-
-- **generation** : `toutes` (par défaut), `1` ou `2` ;
-- **cartes** : les numéros séparés par des virgules (vide = toutes les annonces) ;
-- **dry** : affiche ce qui serait retiré, sans rien faire.
-
-> ⚠️ Une carte en vente peut être achetée à tout moment par un autre joueur, et seule une annonce
-> encore ouverte peut être retirée. `--retirer` sans numéros retire **toutes** tes annonces, même
-> celles posées à la main dans l'appli (onglet *Marché*, *Mes ventes*). Une carte retirée mais encore
-> en surplus repartira en vente au prochain `npm run vendre` : pense à couper le cron si tu en as un.
-
-> ⚠️ La défausse est **définitive**. Lance d'abord `npm run vendre -- --dry` (ou coche *Test à
-> blanc* sur GitHub) pour voir ce qui baisserait et ce qui serait défaussé.
-
-## Duels contre ton compte bot
-
-Chaque duel en ligne rapporte des Kheys : **+30 K** en cas de victoire, **+10 K** en cas de
-défaite, dans la limite de **10 duels récompensés par jour** (remis à zéro à minuit UTC).
-`npm run duels` les joue pour toi contre un second compte qui te sert d'adversaire :
-
-1. tes deux comptes deviennent amis si ce n'est pas déjà le cas ;
-2. ton compte défie le bot avec ton deck le plus fort ;
-3. le bot accepte avec un deck composé **en priorité de cartes que tu n'as pas** : le gagnant
-   prend une carte au perdant, autant qu'elle complète ta collection ;
-4. le bot **abandonne** tout de suite (mode `abandon`, par défaut) : tu gagnes, et tu retournes
-   une de ses 6 cartes au hasard. Avec `--mode=jouer`, les deux comptes jouent coup par coup
-   (toi au mieux, le bot au plus mal). Si le serveur ne récompense pas un abandon, le script
-   passe tout seul en mode `jouer` ;
-5. si le bot gagne quand même (mode `jouer`), il ne réclame pas ta carte.
-
-Pour 10 duels gagnés : **+300 K** pour toi, **+100 K** pour le bot, et 10 cartes du bot pour toi.
-
-Il faut d'abord un compte bot : voir *Rajouter un bot* plus haut.
-
-```bash
-npm run duels -- --dry          # vérifie les comptes, l'amitié et les decks, sans jouer
-npm run duels -- --nombre=1     # un seul duel, pour tester
-npm run duels                   # tous les duels récompensés restants du jour
-npm run duels -- --mode=jouer   # jouer les coups au lieu de faire abandonner le bot
-```
+- **Comment ça marche** : chaque script se connecte à ton compte exactement comme l'appli, et
+  n'utilise que les actions qu'un joueur peut faire dans le jeu. Le serveur applique ses règles
+  comme d'habitude.
+- **Audit des profils** : `npm run profils` (en local uniquement) montre ce que la base laisse
+  voir des profils des autres joueurs, et l'écrit dans `profils.json`.

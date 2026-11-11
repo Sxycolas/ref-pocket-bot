@@ -12,11 +12,12 @@ jobs:
       contents: read
     timeout-minutes: 120 # large : un arrêt en cours de route laisserait des cartes prêtées
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - run: npm install
+          cache: npm
+      - run: npm ci
       # Les logs de ce dépôt sont publics : chaque e-mail et mot de passe est masqué avant
       # de lancer le script. Sans compte valide, on s'arrête : le script en créerait un nouveau.
       - name: Préparer les comptes

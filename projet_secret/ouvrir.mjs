@@ -1,4 +1,4 @@
-// Ouvre les boosters d'un compte avec bot.mjs.
+// Ouvre les boosters d'un compte avec boosters.mjs.
 //
 //   npm run ouvrir --email=adresse@exemple.com --password='mot_de_passe' --gen=2
 //
@@ -21,7 +21,7 @@ if (!email || !password || !["1", "2"].includes(gen)) {
   process.exit(1);
 }
 
-const bot = spawnSync(process.execPath, [join(import.meta.dirname, "..", "bot.mjs"), `--gen=${gen}`], {
+const bot = spawnSync(process.execPath, [join(import.meta.dirname, "..", "boosters.mjs"), `--gen=${gen}`], {
   env: { ...process.env, REF_EMAIL: email, REF_PASS: password },
   stdio: "inherit",
 });

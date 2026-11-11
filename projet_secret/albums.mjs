@@ -34,11 +34,11 @@ async function fetchAll(build) {
   return out;
 }
 
-const catalogue = await fetchAll(() => sb.from("cards").select("id,type,gen,active").order("n"));
+const catalogue = await fetchAll(() => sb.from("cards").select("id,type,gen,active").order("id"));
 const instances = await fetchAll(() =>
   sb.from("card_instances").select("card_id").eq("owner", me.id).order("id"),
 );
-const claims = await fetchAll(() => sb.from("album_claims").select("album").eq("owner", me.id));
+const claims = await fetchAll(() => sb.from("album_claims").select("album").eq("owner", me.id).order("album"));
 
 const possedees = new Set(instances.map((i) => i.card_id));
 const dejaReclames = new Set(claims.map((c) => c.album));

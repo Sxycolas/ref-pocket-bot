@@ -8,37 +8,19 @@
 // Écrit profils.json (tout le détail) et affiche un résumé + une alerte sur les
 // colonnes sensibles visibles par n'importe qui.
 
-import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
+import { connecter, lireTout } from "./session.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const { REF_EMAIL, REF_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 
-const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
 
-{
-  const { error } = await sb.auth.signInWithPassword({ email: REF_EMAIL, password: REF_PASS });
-  if (error) die("Connexion impossible : " + error.message);
-}
-const me = (await sb.rpc("my_profile")).data;
-if (!me?.id) die("Profil introuvable.");
+const { sb, me, error } = await connecter(REF_EMAIL, REF_PASS);
+if (error) die(error);
 
-// Pagination (Supabase : 1000 lignes max par requête)
-async function fetchAll(build) {
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await build().range(from, from + 999);
-    if (error) throw error;
-    out.push(...data);
-    if (data.length < 1000) break;
-  }
-  return out;
-}
-
-const profiles = await fetchAll(() => sb.from("profiles").select("*").order("created_at"));
+// Trié aussi par id : deux profils créés à la même date ne doivent pas changer de page
+const profiles = await lireTout(() => sb.from("profiles").select("*").order("created_at").order("id"));
 
 // Colonnes qu'on ne s'attendrait pas à voir pour TOUS les joueurs.
 const SENSITIVE = ["kheys", "boosters", "pity", "daily_day", "daily_n", "last_refill", "is_admin"];

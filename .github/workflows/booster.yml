@@ -11,12 +11,13 @@ jobs:
     env:
       HAS_BOT: ${{ secrets.BOT_EMAIL != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - run: npm install
-      - run: node bot.mjs
+          cache: npm
+      - run: npm ci
+      - run: node boosters.mjs
         env:
           REF_EMAIL: ${{ secrets.REF_EMAIL }}
           REF_PASS: ${{ secrets.REF_PASS }}
@@ -24,7 +25,7 @@ jobs:
       - name: Boosters du bot
         if: ${{ env.HAS_BOT == 'true' }}
         continue-on-error: true
-        run: node bot.mjs
+        run: node boosters.mjs
         env:
           REF_EMAIL: ${{ secrets.BOT_EMAIL }}
           REF_PASS: ${{ secrets.BOT_PASS }}

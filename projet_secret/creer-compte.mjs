@@ -1,4 +1,4 @@
-// Crée un compte Ref Pocket, choisit son pseudo, puis ouvre ses boosters avec bot.mjs.
+// Crée un compte Ref Pocket, choisit son pseudo, puis ouvre ses boosters avec boosters.mjs.
 //
 //   npm run compte -- --email=adresse@exemple.com --password='mot_de_passe' --pseudo=MonPseudo
 //   ... --gen=1                                     -> ouvre des boosters de Gén. 1 (Gén. 2 par défaut)
@@ -9,9 +9,8 @@ import { createClient } from "@supabase/supabase-js";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { KEY, OPTIONS, URL } from "../session.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const FICHIER = join(import.meta.dirname, "compte-auto.json");
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -54,9 +53,7 @@ function enregistrer(pseudoDuCompte) {
   renameSync(temporaire, FICHIER);
 }
 
-const sb = createClient(URL, KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+const sb = createClient(URL, KEY, OPTIONS);
 
 // Connexion d'abord, pour que le script puisse être relancé sans réinscrire le compte
 const connexion = await sb.auth.signInWithPassword({ email, password });
@@ -85,7 +82,7 @@ if (profil.data?.id) {
   log(`Profil créé : ${pseudo}`);
 }
 
-const bot = spawnSync(process.execPath, [join(import.meta.dirname, "..", "bot.mjs"), `--gen=${gen}`], {
+const bot = spawnSync(process.execPath, [join(import.meta.dirname, "..", "boosters.mjs"), `--gen=${gen}`], {
   env: { ...process.env, REF_EMAIL: email, REF_PASS: password },
   stdio: "inherit",
 });

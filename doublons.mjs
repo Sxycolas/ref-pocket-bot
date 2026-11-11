@@ -8,43 +8,28 @@
 //
 // Écrit doublons.md et affiche le tableau dans le terminal.
 
-import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
+import { connecter, lireTout } from "./session.mjs";
+import { numerosSite } from "./numeros.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const { REF_EMAIL, REF_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 
-const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
 
-{
-  const { error } = await sb.auth.signInWithPassword({ email: REF_EMAIL, password: REF_PASS });
-  if (error) die("Connexion impossible : " + error.message);
-}
-const me = (await sb.rpc("my_profile")).data;
-if (!me?.id) die("Profil introuvable.");
-
-async function fetchAll(build) {
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await build().range(from, from + 999);
-    if (error) throw error;
-    out.push(...data);
-    if (data.length < 1000) break;
-  }
-  return out;
-}
+const { sb, me, error } = await connecter(REF_EMAIL, REF_PASS);
+if (error) die(error);
 
 const RAR = { L: "Légendaires", E: "Épiques", R: "Rares", C: "Communes" };
 const ORDER = ["L", "E", "R", "C"];
 
-const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen"))).map((c) => [c.id, c]));
+const catalogue = await lireTout(() => sb.from("cards").select("id,name,rarity,n,gen,active").order("id"));
+const cards = Object.fromEntries(catalogue.map((c) => [c.id, c]));
+const numero = numerosSite(catalogue); // numéro du site : chaque génération repart à 1
 
 // Regroupe les exemplaires par carte.
 const m = new Map();
-for (const r of await fetchAll(() => sb.from("card_instances").select("card_id,holo,lock").eq("owner", me.id))) {
+for (const r of await lireTout(() => sb.from("card_instances").select("id,card_id,holo,lock").eq("owner", me.id).order("id"))) {
   const t = m.get(r.card_id) || { total: 0, holo: 0, simple: 0, vente: 0 };
   t.total++;
   // holo et « en vente » sont indépendants : un exemplaire peut être les deux.
@@ -53,11 +38,11 @@ for (const r of await fetchAll(() => sb.from("card_instances").select("card_id,h
   m.set(r.card_id, t);
 }
 
-// Doublons = au moins 2 exemplaires. On trie par rareté puis par identifiant.
+// Doublons = au moins 2 exemplaires. On trie par rareté puis dans l'ordre du site.
 const dups = [...m.entries()]
   .filter(([, t]) => t.total >= 2)
-  .map(([id, t]) => ({ id, ...t, name: cards[id]?.name || id, r: cards[id]?.rarity || "C", n: cards[id]?.n ?? 0, gen: cards[id]?.gen || 1 }))
-  .sort((a, b) => ORDER.indexOf(a.r) - ORDER.indexOf(b.r) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+  .map(([id, t]) => ({ id, ...t, name: cards[id]?.name || id, r: cards[id]?.rarity || "C", n: cards[id]?.n ?? 0, no: numero.get(id) ?? "HS", gen: cards[id]?.gen || 1 }))
+  .sort((a, b) => ORDER.indexOf(a.r) - ORDER.indexOf(b.r) || a.n - b.n);
 // La génération la plus récente d'abord.
 const GENS = [...new Set(dups.map((d) => d.gen))].sort((a, b) => b - a);
 
@@ -78,8 +63,8 @@ for (const gen of GENS) for (const r of ORDER) {
   lines.push(`## Génération ${gen} · ${RAR[r]} (${g.length})`, "", "| N° | Carte | Total | Holos | Simples | En vente |", "|---:|---|---:|---:|---:|---:|");
   console.log(`=== Génération ${gen} · ${RAR[r]} (${g.length}) ===`);
   for (const d of g) {
-    lines.push(`| ${d.n} | ${d.name} | ${d.total} | ${d.holo} | ${d.simple} | ${d.vente} |`);
-    console.log(`  n°${String(d.n).padEnd(4)} ${d.name.slice(0, 40).padEnd(40)} total=${d.total}  holos=${d.holo}  simples=${d.simple}${d.vente ? `  vente=${d.vente}` : ""}`);
+    lines.push(`| ${d.no} | ${d.name} | ${d.total} | ${d.holo} | ${d.simple} | ${d.vente} |`);
+    console.log(`  n°${String(d.no).padEnd(4)} ${d.name.slice(0, 40).padEnd(40)} total=${d.total}  holos=${d.holo}  simples=${d.simple}${d.vente ? `  vente=${d.vente}` : ""}`);
   }
   lines.push("");
   console.log("");

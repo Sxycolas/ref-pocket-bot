@@ -42,18 +42,19 @@
 //   ... node vendre.mjs --baisse=15 --palier=12     -> baisse de 15 % toutes les 12 h
 //   ... node vendre.mjs --sans-defausse             -> ne défausse jamais rien
 //   ... node vendre.mjs --retirer                   -> retire toutes tes annonces ouvertes
-//   ... node vendre.mjs --retirer=141,176           -> retire seulement ces numéros de carte
+//   ... node vendre.mjs --retirer=141,176           -> retire seulement ces numéros de carte (ceux
+//                                                      du site, qui repartent à 1 en Gén. 2 : ajoute
+//                                                      --gen pour viser une seule génération)
 //   ... node vendre.mjs --gen=2                     -> seulement cette génération, 1 ou 2 (toutes par défaut) :
 //                                                      annonces, baisses, défausses et retraits
 //   npm run vendre -- --dry     (lit le .env en local ; secrets sur GitHub Actions)
 //
 // Écrit un compte rendu dans ventes.md.
 
-import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
+import { connecter, lireTout } from "./session.mjs";
+import { numerosSite } from "./numeros.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const { REF_EMAIL, REF_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 
@@ -96,26 +97,10 @@ const GARDER_NIVEAU_MAX = 2; // ... et sur une carte au niveau maximum
 // Un cron quotidien ne tombe jamais pile à la même seconde : on tolère 10 % d'avance.
 const PALIER_MS = PALIER_H * 3600e3 * 0.9;
 
-const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
 
-{
-  const { error } = await sb.auth.signInWithPassword({ email: REF_EMAIL, password: REF_PASS });
-  if (error) die("Connexion impossible : " + error.message);
-}
-const me = (await sb.rpc("my_profile")).data;
-if (!me?.id) die("Profil introuvable.");
-
-async function fetchAll(build) {
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await build().range(from, from + 999);
-    if (error) throw error;
-    out.push(...data);
-    if (data.length < 1000) break;
-  }
-  return out;
-}
+const { sb, me, error } = await connecter(REF_EMAIL, REF_PASS);
+if (error) die(error);
 
 // Mêmes valeurs que RARITIES dans cartes.js du site (elles n'existent que côté client).
 const RAR = {
@@ -130,18 +115,21 @@ const plancherDe = (r, holo) => RAR[r].discard * mult(holo);
 const prixDe = (c, holo) => Math.max(plancherDe(c.rarity, holo), Math.round((RAR[c.rarity].value * mult(holo) * (100 - remiseDe(c))) / 100));
 const pasDe = (r, holo) => Math.max(1, Math.round((RAR[r].value * mult(holo) * BAISSE) / 100));
 
-const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen").order("id"))).map((c) => [c.id, c]));
-const mesAnnonces = () => fetchAll(() => sb.from("listings").select("id,price,created_at,instance_id,inst:card_instances(card_id,holo)").eq("seller", me.id).eq("status", "open").order("id"));
+const catalogue = await lireTout(() => sb.from("cards").select("id,name,rarity,n,gen,active").order("id"));
+const cards = Object.fromEntries(catalogue.map((c) => [c.id, c]));
+const numero = numerosSite(catalogue); // numéro du site : chaque génération repart à 1
+const noDe = (c) => (c ? numero.get(c.id) ?? "HS" : "?");
+const mesAnnonces = () => lireTout(() => sb.from("listings").select("id,price,created_at,instance_id,inst:card_instances(card_id,holo)").eq("seller", me.id).eq("status", "open").order("id"));
 const nomDe = (c) => `${(c?.gen || 1) > 1 ? `[Gén. ${c.gen}] ` : ""}${c?.name || "?"}`;
-const ligne = (signe, c, holo, suite) => `  ${signe} n°${String(c?.n ?? "?").padEnd(4)} ${nomDe(c).slice(0, 44).padEnd(44)} ${(holo ? "holo" : "normale").padEnd(8)} ${suite}`;
+const ligne = (signe, c, holo, suite) => `  ${signe} n°${String(noDe(c)).padEnd(4)} ${nomDe(c).slice(0, 44).padEnd(44)} ${(holo ? "holo" : "normale").padEnd(8)} ${suite}`;
 
 // ---------- Mode --retirer : retire des annonces au lieu d'en créer ----------
 if (retirerArg) {
   const annonces = await mesAnnonces();
   const visees = annonces
     .map((l) => ({ id: l.id, prix: l.price, holo: l.inst?.holo, carte: cards[l.inst?.card_id] }))
-    .filter((l) => genVisee(l.carte) && (!NUMEROS || NUMEROS.includes(String(l.carte?.n))));
-  const sansAnnonce = (NUMEROS || []).filter((x) => !visees.some((l) => String(l.carte?.n) === x));
+    .filter((l) => genVisee(l.carte) && (!NUMEROS || NUMEROS.includes(String(noDe(l.carte)))));
+  const sansAnnonce = (NUMEROS || []).filter((x) => !visees.some((l) => String(noDe(l.carte)) === x));
 
   console.log(`${me.pseudo} : ${visees.length} annonce(s) à retirer sur ${annonces.length} ouverte(s), générations : ${gensTexte}.${DRY ? "  (DRY-RUN : rien ne sera retiré)" : ""}\n`);
 
@@ -167,7 +155,7 @@ if (retirerArg) {
   R.push(`${retirees.length} annonce(s) ${verbe} sur ${annonces.length} ouverte(s). Générations traitées : ${gensTexte}.`, "");
   if (retirees.length) {
     R.push("| N° | Carte | Exemplaire | Prix |", "|---:|---|---|---:|");
-    for (const l of retirees) R.push(`| ${l.carte?.n ?? "?"} | ${l.carte ? nomDe(l.carte) : `annonce #${l.id}`} | ${l.holo ? "Holo" : "Normale"} | ${l.prix} K |`);
+    for (const l of retirees) R.push(`| ${noDe(l.carte)} | ${l.carte ? nomDe(l.carte) : `annonce #${l.id}`} | ${l.holo ? "Holo" : "Normale"} | ${l.prix} K |`);
     R.push("");
   }
   if (sansAnnonce.length) R.push(`Aucune annonce ouverte pour : ${sansAnnonce.map((x) => `n°${x}`).join(", ")}.`, "");
@@ -184,12 +172,12 @@ if (retirerArg) {
   process.exit(echecs.length ? 1 : 0);
 }
 
-const niveaux = Object.fromEntries((await fetchAll(() => sb.from("card_levels").select("card_id,level").eq("owner", me.id).order("card_id"))).map((l) => [l.card_id, l.level]));
+const niveaux = Object.fromEntries((await lireTout(() => sb.from("card_levels").select("card_id,level").eq("owner", me.id).order("card_id"))).map((l) => [l.card_id, l.level]));
 const estNiveauMax = (id) => (niveaux[id] || 0) >= NIVEAU_MAX;
 
 // Regroupe les exemplaires par carte (triés : on garde les plus anciens).
 const parCarte = new Map();
-for (const i of await fetchAll(() => sb.from("card_instances").select("id,card_id,holo,lock").eq("owner", me.id).order("id"))) {
+for (const i of await lireTout(() => sb.from("card_instances").select("id,card_id,holo,lock").eq("owner", me.id).order("id"))) {
   const t = parCarte.get(i.card_id) || { holos: [], simples: [], enVente: 0 };
   if (!i.lock) (i.holo ? t.holos : t.simples).push(i.id);
   else if (i.lock === "listing") t.enVente++;
@@ -334,23 +322,23 @@ for (const gen of [...new Set(vendues.map((c) => c.gen || 1))].sort((a, b) => b 
   const g = vendues.filter((c) => (c.gen || 1) === gen && c.rarity === r);
   if (!g.length) continue;
   L.push(`## Génération ${gen} · ${RAR[r].name}`, "", "| N° | Carte | Exemplaire | Prix | Niveau max |", "|---:|---|---|---:|---|");
-  for (const c of g) L.push(`| ${c.n} | ${c.name} | ${genre(c.holo)} | ${c.prix} K | ${c.niveauMax ? "Oui" : "Non"} |`);
+  for (const c of g) L.push(`| ${noDe(c)} | ${c.name} | ${genre(c.holo)} | ${c.prix} K | ${c.niveauMax ? "Oui" : "Non"} |`);
   L.push("");
 }
 if (baissees.length) {
   L.push(`## Prix baissés (${baissees.length})`, "", "| N° | Carte | Exemplaire | Avant | Après |", "|---:|---|---|---:|---:|");
-  for (const b of baissees) L.push(`| ${b.carte.n} | ${nomDe(b.carte)} | ${genre(b.holo)} | ${b.avant} K | ${b.apres} K |`);
+  for (const b of baissees) L.push(`| ${noDe(b.carte)} | ${nomDe(b.carte)} | ${genre(b.holo)} | ${b.avant} K | ${b.apres} K |`);
   L.push("");
 }
 if (defaussees.length) {
   const gain = defaussees.reduce((s, d) => s + d.gain, 0);
   L.push(`## Défaussées, personne n'en voulait (${defaussees.reduce((s, d) => s + d.nombre, 0)} exemplaire(s), +${gain} K)`, "", "| N° | Carte | Exemplaire | Nombre | Gain |", "|---:|---|---|---:|---:|");
-  for (const d of defaussees) L.push(`| ${d.carte.n} | ${nomDe(d.carte)} | ${genre(d.holo)} | ${d.nombre} | ${d.gain} K |`);
+  for (const d of defaussees) L.push(`| ${noDe(d.carte)} | ${nomDe(d.carte)} | ${genre(d.holo)} | ${d.nombre} | ${d.gain} K |`);
   L.push("");
 }
 if (enAttente.length) {
   L.push(`## En vente, prochaine baisse plus tard (${enAttente.length})`, "", "| N° | Carte | Exemplaire | Prix | Prochaine baisse |", "|---:|---|---|---:|---|");
-  for (const a of enAttente) L.push(`| ${a.carte.n} | ${nomDe(a.carte)} | ${genre(a.holo)} | ${a.prix} K | après ${a.prochaine.toISOString().slice(0, 16).replace("T", " ")} UTC |`);
+  for (const a of enAttente) L.push(`| ${noDe(a.carte)} | ${nomDe(a.carte)} | ${genre(a.holo)} | ${a.prix} K | après ${a.prochaine.toISOString().slice(0, 16).replace("T", " ")} UTC |`);
   L.push("");
 }
 if (echecs.length) {

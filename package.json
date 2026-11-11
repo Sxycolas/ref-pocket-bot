@@ -4,7 +4,7 @@
     "node": ">=22.9"
   },
   "scripts": {
-    "bot": "node --env-file-if-exists=.env bot.mjs",
+    "boosters": "node --env-file-if-exists=.env boosters.mjs",
     "compte": "node projet_secret/creer-compte.mjs",
     "ouvrir": "node projet_secret/ouvrir.mjs",
     "transferer": "node projet_secret/transferer.mjs",

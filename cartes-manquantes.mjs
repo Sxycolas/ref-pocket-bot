@@ -9,72 +9,43 @@
 // Facultatif : avec BOT_EMAIL / BOT_PASS (le compte bot des duels), chaque carte manquante que
 // le bot possède est signalée, avec le nombre d'exemplaires transférables vers ton compte.
 
-import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
-import { ouvrirSession } from "./session.mjs";
+import { connecter, lireTout } from "./session.mjs";
+import { numerosSite } from "./numeros.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const { REF_EMAIL, REF_PASS, BOT_EMAIL, BOT_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 if (BOT_EMAIL && BOT_EMAIL.trim().toLowerCase() === REF_EMAIL.trim().toLowerCase()) {
   throw new Error("BOT_EMAIL doit être un autre compte que REF_EMAIL");
 }
 
-const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
 
-{
-  const { error } = await sb.auth.signInWithPassword({ email: REF_EMAIL, password: REF_PASS });
-  if (error) die("Connexion impossible : " + error.message);
-}
-const me = (await sb.rpc("my_profile")).data;
-if (!me?.id) die("Profil introuvable.");
-
-async function fetchAll(build) {
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await build().range(from, from + 999);
-    if (error) throw error;
-    out.push(...data);
-    if (data.length < 1000) break;
-  }
-  return out;
-}
+const { sb, me, error } = await connecter(REF_EMAIL, REF_PASS);
+if (error) die(error);
 
 const RAR = { L: "Légendaires", E: "Épiques", R: "Rares", C: "Communes" };
 const ORDER = ["L", "E", "R", "C"];
 
 const genDe = (c) => c.gen || 1;
 
-const cards = await fetchAll(() => sb.from("cards").select("id,name,rarity,n,active,gen").order("n"));
-const mineIds = new Set((await fetchAll(() => sb.from("card_instances").select("card_id").eq("owner", me.id))).map((r) => r.card_id));
+const cards = await lireTout(() => sb.from("cards").select("id,name,rarity,n,active,gen").order("id"));
+const mineIds = new Set((await lireTout(() => sb.from("card_instances").select("id,card_id").eq("owner", me.id).order("id"))).map((r) => r.card_id));
 const missing = cards.filter((c) => !mineIds.has(c.id));
 
-// Numéro affiché sur le site : chaque génération repart à 1 (cartes en boosters triées par n),
-// les cartes hors boosters n'ont pas de numéro (« HS »).
-const numero = new Map();
-for (const gen of new Set(cards.map(genDe))) {
-  cards.filter((c) => genDe(c) === gen && c.active).sort((a, b) => a.n - b.n).forEach((c, i) => numero.set(c.id, i + 1));
-}
+const numero = numerosSite(cards);
 const noDe = (c) => (numero.has(c.id) ? `n°${numero.get(c.id)}` : "HS");
 
 // Cartes du bot : celles en vente ou dans un échange (lock) ne peuvent pas être transférées.
-const chezBot = new Map(); // card_id -> { dispo, holo, bloquees }
+const chezBot = new Map(); // card_id -> exemplaires transférables
 if (BOT_EMAIL && BOT_PASS) {
-  const { sb: sbBot, error } = await ouvrirSession(BOT_EMAIL, BOT_PASS);
-  if (error) die("Connexion au compte bot impossible : " + error.message);
-  const p = (await sbBot.rpc("my_profile")).data;
-  if (!p?.id) die("Profil du compte bot introuvable.");
-  for (const i of await fetchAll(() => sbBot.from("card_instances").select("id,card_id,holo,lock").eq("owner", p.id).order("id"))) {
-    const t = chezBot.get(i.card_id) ?? { dispo: 0, holo: 0, bloquees: 0 };
-    if (i.lock) t.bloquees++;
-    else { t.dispo++; if (i.holo) t.holo++; }
-    chezBot.set(i.card_id, t);
+  const bot = await connecter(BOT_EMAIL, BOT_PASS);
+  if (bot.error) die(`Compte bot : ${bot.error}`);
+  for (const i of await lireTout(() => bot.sb.from("card_instances").select("id,card_id,lock").eq("owner", bot.me.id).order("id"))) {
+    if (!i.lock) chezBot.set(i.card_id, (chezBot.get(i.card_id) ?? 0) + 1);
   }
 }
-const transferable = (c) => (chezBot.get(c.id)?.dispo ?? 0) > 0;
-const botDe = (c) => (transferable(c) ? ` 🤖 x${chezBot.get(c.id).dispo}` : "");
+const botDe = (c) => (chezBot.has(c.id) ? ` 🤖 x${chezBot.get(c.id)}` : "");
 
 const lines = [`# Cartes manquantes pour ${me.pseudo}`, "", `Au ${new Date().toISOString()} : ${missing.length} manquante(s) sur ${cards.length} (tu en as ${mineIds.size}).`, ""];
 console.log(`${me.pseudo} : ${mineIds.size}/${cards.length} cartes. Il te manque ${missing.length} cartes.\n`);

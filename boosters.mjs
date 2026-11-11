@@ -1,4 +1,4 @@
-import { ouvrirSession } from "./session.mjs";
+import { connecter } from "./session.mjs";
 
 const { REF_EMAIL, REF_PASS } = process.env;
 
@@ -14,15 +14,10 @@ if (GEN !== null && GEN !== 1 && GEN !== 2) throw new Error("--gen attend 1 ou 2
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
-const { sb, error: e0 } = await ouvrirSession(REF_EMAIL, REF_PASS);
-if (e0) {
-  log("Connexion impossible :", e0.message);
-  process.exit(1);
-}
-
-const me = await sb.rpc("my_profile");
-if (me.error) {
-  log("Profil :", me.error.message);
+// Un compte sans profil (pseudo pas encore choisi) s'arrête ici, pas sur une erreur plus loin
+const { sb, me: p, error } = await connecter(REF_EMAIL, REF_PASS);
+if (error) {
+  log(error);
   process.exit(1);
 }
 
@@ -30,7 +25,6 @@ const REFILL_MS = 3600e3;
 const MAX_STOCK = 2;
 
 // Même calcul que le site : au-delà de la réserve max, le stock n'est pas plafonné
-const p = me.data;
 let gratuits =
   p.boosters >= MAX_STOCK
     ? p.boosters

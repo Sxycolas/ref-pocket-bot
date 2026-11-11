@@ -9,11 +9,12 @@ jobs:
       contents: read
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - run: npm install
+          cache: npm
+      - run: npm ci
       - run: npm run manquantes
         env:
           REF_EMAIL: ${{ secrets.REF_EMAIL }}
@@ -21,7 +22,7 @@ jobs:
           BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
           BOT_PASS: ${{ secrets.BOT_PASS }}
       - run: cat cartes-manquantes.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cartes-manquantes
           path: cartes-manquantes.md

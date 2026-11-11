@@ -20,12 +20,12 @@
 //   npm run duels -- --dry     (lit le .env en local ; secrets sur GitHub Actions)
 //
 // Le compte bot doit avoir au moins 6 cartes différentes : ouvre ses boosters avec
-// bot.mjs (le workflow duels.yml le fait avant chaque série).
+// boosters.mjs (le workflow duels.yml le fait avant chaque série).
 //
 // Écrit un compte rendu dans duels.md.
 
 import { writeFileSync } from "node:fs";
-import { ouvrirSession } from "./session.mjs";
+import { connecter as ouvrir, lireTout } from "./session.mjs";
 
 const { REF_EMAIL, REF_PASS, BOT_EMAIL, BOT_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
@@ -50,31 +50,18 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const todayUTC = () => new Date().toISOString().slice(0, 10);
 
 async function connecter(email, pass, qui) {
-  const { sb, error } = await ouvrirSession(email, pass);
-  if (error) die(`Connexion impossible (${qui}) : ${error.message}`);
-  const p = await sb.rpc("my_profile");
-  if (p.error || !p.data?.id) die(`Profil introuvable (${qui}) : ${p.error?.message || "vide"}`);
-  return { sb, me: p.data, qui };
+  const { sb, me, error } = await ouvrir(email, pass);
+  if (error) die(`${qui} : ${error}`);
+  return { sb, me, qui };
 }
 const restants = (p) => Math.max(0, p.daily_day === todayUTC() ? DUEL_DAILY - p.daily_n : DUEL_DAILY);
 const rafraichir = async (j) => { const p = await j.sb.rpc("my_profile"); if (!p.error && p.data) j.me = p.data; return j.me; };
-
-async function fetchAll(build) {
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await build().range(from, from + 999);
-    if (error) throw error;
-    out.push(...data);
-    if (data.length < 1000) break;
-  }
-  return out;
-}
 
 const moi = await connecter(REF_EMAIL, REF_PASS, "ton compte");
 const bot = await connecter(BOT_EMAIL, BOT_PASS, "compte bot");
 console.log(`${moi.me.pseudo} contre ${bot.me.pseudo} (bot), mode ${MODE}.${DRY ? "  (DRY-RUN : aucun duel ne sera joué)" : ""}`);
 
-const cards = Object.fromEntries((await fetchAll(() => moi.sb.from("cards").select("id,name,n,rarity,p,d,v").order("id"))).map((c) => [c.id, c]));
+const cards = Object.fromEntries((await lireTout(() => moi.sb.from("cards").select("id,name,n,rarity,p,d,v").order("id"))).map((c) => [c.id, c]));
 const nomDe = (id) => cards[id]?.name || id;
 
 // ---------- Amitié (nécessaire pour se défier) ----------
@@ -109,7 +96,7 @@ async function lienAmi() {
 // Cartes différentes disponibles (hors annonces et échanges), avec ou sans holo.
 async function collection(j) {
   const parCarte = new Map();
-  for (const i of await fetchAll(() => j.sb.from("card_instances").select("id,card_id,holo,lock").eq("owner", j.me.id).order("id"))) {
+  for (const i of await lireTout(() => j.sb.from("card_instances").select("id,card_id,holo,lock").eq("owner", j.me.id).order("id"))) {
     const t = parCarte.get(i.card_id) || { total: 0, dispo: 0, holo: false };
     t.total++;
     if (!i.lock) { t.dispo++; if (i.holo) t.holo = true; }
@@ -153,7 +140,7 @@ async function decks() {
   // Le bot : d'abord ce que tu n'as pas, puis les plus rares, puis les plus faibles.
   const dBot = deck(sienne, (a, b) => (mienne.has(a.id) - mienne.has(b.id)) || (RORDER.indexOf(a.rarity) - RORDER.indexOf(b.rarity)) || (force(a) - force(b)));
   if (!dMoi) die(`Ton compte n'a pas ${DECK_SIZE} cartes différentes disponibles pour un deck.`);
-  if (!dBot) die(`Le compte bot n'a pas ${DECK_SIZE} cartes différentes disponibles : ouvre ses boosters (bot.mjs avec ses identifiants).`);
+  if (!dBot) die(`Le compte bot n'a pas ${DECK_SIZE} cartes différentes disponibles : ouvre ses boosters (boosters.mjs avec ses identifiants).`);
   return { dMoi, dBot, mienne, nouvelles: dBot.filter((x) => !mienne.has(x.replace("*", ""))).length };
 }
 const affiche = (d) => d.map((x) => `${nomDe(x.replace("*", ""))}${x.endsWith("*") ? " ✨" : ""}`).join(", ");

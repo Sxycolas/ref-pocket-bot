@@ -20,11 +20,9 @@
 // Écrit un compte rendu dans ameliorations.md (ce qui a été amélioré ET pourquoi
 // le reste ne l'a pas été).
 
-import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
+import { connecter, lireTout } from "./session.mjs";
 
-const URL = "https://driraijgakhmnsxepuot.supabase.co";
-const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
 const { REF_EMAIL, REF_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
 
@@ -40,34 +38,18 @@ const genArg = process.argv.find((a) => a.startsWith("--gen"));
 const GEN = genArg ? Number(genArg.split("=")[1]) : null;
 if (GEN !== null && GEN !== 1 && GEN !== 2) throw new Error("--gen attend 1 ou 2 (ex. --gen=2)");
 
-const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
 
-{
-  const { error } = await sb.auth.signInWithPassword({ email: REF_EMAIL, password: REF_PASS });
-  if (error) die("Connexion impossible : " + error.message);
-}
-const me = (await sb.rpc("my_profile")).data;
-if (!me?.id) die("Profil introuvable.");
+const { sb, me, error } = await connecter(REF_EMAIL, REF_PASS);
+if (error) die(error);
 
-async function fetchAll(build) {
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await build().range(from, from + 999);
-    if (error) throw error;
-    out.push(...data);
-    if (data.length < 1000) break;
-  }
-  return out;
-}
-
-const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,gen"))).map((c) => [c.id, c]));
+const cards = Object.fromEntries((await lireTout(() => sb.from("cards").select("id,name,rarity,gen").order("id"))).map((c) => [c.id, c]));
 const RAR = { L: "Légendaire", E: "Épique", R: "Rare", C: "Commune" };
 const ORDER = { L: 0, E: 1, R: 2, C: 3 };
 
 // Compte, par carte : exemplaires simples (ni holo, ni en vente), holos, en vente.
 const m = new Map();
-for (const r of await fetchAll(() => sb.from("card_instances").select("card_id,holo,lock").eq("owner", me.id))) {
+for (const r of await lireTout(() => sb.from("card_instances").select("id,card_id,holo,lock").eq("owner", me.id).order("id"))) {
   const t = m.get(r.card_id) || { simple: 0, holo: 0, vente: 0 };
   if (r.holo) t.holo++; else if (r.lock) t.vente++; else t.simple++;
   m.set(r.card_id, t);

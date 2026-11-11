@@ -5,6 +5,7 @@
 // La sortie standard ne contient que le JSON : les erreurs partent sur la sortie d'erreur.
 
 import { ouvrirSession } from "../session.mjs";
+import { numerosSite } from "../numeros.mjs";
 
 const stop = (msg) => {
   console.error(msg);
@@ -34,7 +35,7 @@ async function fetchAll(build) {
   return out;
 }
 
-const catalogue = await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen,active").order("n"));
+const catalogue = await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen,active").order("n").order("id"));
 const instances = await fetchAll(() =>
   sb.from("card_instances").select("card_id,holo").eq("owner", me.id).order("id"),
 );
@@ -48,6 +49,7 @@ for (const { card_id, holo } of instances) {
 }
 
 const genDe = (c) => c.gen || 1;
+const numero = numerosSite(catalogue); // numéro du site : chaque génération repart à 1, null hors boosters
 // Comme l'album du site : une carte non publiée ne peut pas manquer
 const manquantes = catalogue.filter((c) => c.active && !possedees.has(c.id));
 
@@ -59,6 +61,6 @@ console.log(
     ),
     cartes: catalogue
       .filter((c) => possedees.has(c.id))
-      .map((c) => ({ n: c.n, nom: c.name, gen: genDe(c), rarete: c.rarity, ...possedees.get(c.id) })),
+      .map((c) => ({ n: numero.get(c.id) ?? null, nom: c.name, gen: genDe(c), rarete: c.rarity, ...possedees.get(c.id) })),
   }),
 );

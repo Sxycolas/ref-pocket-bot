@@ -45,7 +45,7 @@ toutes les récompenses d'albums disponibles, puis `rapatrier` renvoie les gains
 ## Motifs moins graves
 
 ### 8. Jeu entièrement automatisé
-`bot.mjs`, `ameliore-cartes.mjs`, `vendre.mjs` et `duels.mjs` jouent sans intervention humaine,
+`boosters.mjs`, `ameliore-cartes.mjs`, `vendre.mjs` et `duels.mjs` jouent sans intervention humaine,
 sur GitHub Actions et déclenchés par cron-job.org, avec par exemple des boosters ouverts toutes
 les heures.
 
