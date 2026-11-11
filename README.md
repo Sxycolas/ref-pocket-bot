@@ -40,7 +40,7 @@ Dans tout ce README, remplace `<TON-COMPTE>` par ton nom d'utilisateur GitHub.
 |---|---|---|---|
 | `bot.mjs` | `npm run bot` | Ouvre les boosters disponibles : la Génération 2 d'abord, puis les boosters achetés réservés à la Génération 1. `npm run bot -- --gen=1` (ou `2`) n'ouvre que cette génération | — |
 | `ameliore-cartes.mjs` | `npm run ameliore` | Améliore les cartes qui peuvent l'être, dans les raretés choisies, et explique pourquoi les autres ne le peuvent pas | `ameliorations.md` |
-| `cartes-manquantes.mjs` | `npm run manquantes` | Liste les cartes du catalogue que tu n'as pas | `cartes-manquantes.md` |
+| `cartes-manquantes.mjs` | `npm run manquantes` | Liste les cartes du catalogue que tu n'as pas. Si un compte bot est configuré, signale celles qu'il possède et qu'il peut te transférer | `cartes-manquantes.md` |
 | `doublons.mjs` | `npm run doublons` | Liste toutes tes cartes en plusieurs exemplaires (total, holos, simples) | `doublons.md` |
 | `vendre.mjs` | `npm run vendre` | Met en vente à prix réduit les holos en double et les doublons des cartes au niveau max, baisse le prix de ce qui ne part pas puis le défausse (voir *Vendre les doublons inutiles*) | `ventes.md` |
 | `duels.mjs` | `npm run duels` | Joue tes 10 duels récompensés du jour contre ton compte bot (voir *Duels contre ton compte bot*) | `duels.md` |
@@ -171,7 +171,8 @@ Si tu préfères lancer les scripts depuis ta machine :
 ## Rajouter un bot
 
 Le bot est un **second compte Ref Pocket** qui te sert d'adversaire pour les duels
-(`duels.mjs`). Il n'est utile que pour ça : les autres scripts n'en ont pas besoin.
+(`duels.mjs`). `cartes-manquantes.mjs` s'en sert aussi, s'il est configuré, pour signaler les
+cartes qui te manquent et que le bot peut te transférer. Les autres scripts n'en ont pas besoin.
 
 1. **Créer le compte** : inscris-toi sur Ref Pocket avec une autre adresse email et choisis-lui
    un pseudo. Pas besoin de l'ajouter en ami : `duels.mjs` le fait tout seul.

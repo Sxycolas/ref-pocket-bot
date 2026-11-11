@@ -5,14 +5,21 @@
 //   npm run manquantes          (lit le .env en local ; secrets sur GitHub Actions)
 //
 // Écrit cartes-manquantes.md et affiche la liste dans le terminal.
+//
+// Facultatif : avec BOT_EMAIL / BOT_PASS (le compte bot des duels), chaque carte manquante que
+// le bot possède est signalée, avec le nombre d'exemplaires transférables vers ton compte.
 
 import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "node:fs";
+import { ouvrirSession } from "./session.mjs";
 
 const URL = "https://driraijgakhmnsxepuot.supabase.co";
 const KEY = "sb_publishable_BgXnR1FLTcLLajt3id9q_A_RI6JAw1N";
-const { REF_EMAIL, REF_PASS } = process.env;
+const { REF_EMAIL, REF_PASS, BOT_EMAIL, BOT_PASS } = process.env;
 if (!REF_EMAIL || !REF_PASS) throw new Error("REF_EMAIL / REF_PASS manquants");
+if (BOT_EMAIL && BOT_EMAIL.trim().toLowerCase() === REF_EMAIL.trim().toLowerCase()) {
+  throw new Error("BOT_EMAIL doit être un autre compte que REF_EMAIL");
+}
 
 const sb = createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const die = (m) => { console.error(m); process.exit(1); };
@@ -44,6 +51,31 @@ const cards = await fetchAll(() => sb.from("cards").select("id,name,rarity,n,act
 const mineIds = new Set((await fetchAll(() => sb.from("card_instances").select("card_id").eq("owner", me.id))).map((r) => r.card_id));
 const missing = cards.filter((c) => !mineIds.has(c.id));
 
+// Numéro affiché sur le site : chaque génération repart à 1 (cartes en boosters triées par n),
+// les cartes hors boosters n'ont pas de numéro (« HS »).
+const numero = new Map();
+for (const gen of new Set(cards.map(genDe))) {
+  cards.filter((c) => genDe(c) === gen && c.active).sort((a, b) => a.n - b.n).forEach((c, i) => numero.set(c.id, i + 1));
+}
+const noDe = (c) => (numero.has(c.id) ? `n°${numero.get(c.id)}` : "HS");
+
+// Cartes du bot : celles en vente ou dans un échange (lock) ne peuvent pas être transférées.
+const chezBot = new Map(); // card_id -> { dispo, holo, bloquees }
+if (BOT_EMAIL && BOT_PASS) {
+  const { sb: sbBot, error } = await ouvrirSession(BOT_EMAIL, BOT_PASS);
+  if (error) die("Connexion au compte bot impossible : " + error.message);
+  const p = (await sbBot.rpc("my_profile")).data;
+  if (!p?.id) die("Profil du compte bot introuvable.");
+  for (const i of await fetchAll(() => sbBot.from("card_instances").select("id,card_id,holo,lock").eq("owner", p.id).order("id"))) {
+    const t = chezBot.get(i.card_id) ?? { dispo: 0, holo: 0, bloquees: 0 };
+    if (i.lock) t.bloquees++;
+    else { t.dispo++; if (i.holo) t.holo++; }
+    chezBot.set(i.card_id, t);
+  }
+}
+const transferable = (c) => (chezBot.get(c.id)?.dispo ?? 0) > 0;
+const botDe = (c) => (transferable(c) ? ` 🤖 x${chezBot.get(c.id).dispo}` : "");
+
 const lines = [`# Cartes manquantes pour ${me.pseudo}`, "", `Au ${new Date().toISOString()} : ${missing.length} manquante(s) sur ${cards.length} (tu en as ${mineIds.size}).`, ""];
 console.log(`${me.pseudo} : ${mineIds.size}/${cards.length} cartes. Il te manque ${missing.length} cartes.\n`);
 // La génération la plus récente d'abord.
@@ -60,8 +92,8 @@ for (const gen of [...new Set(cards.map(genDe))].sort((a, b) => b - a)) {
     lines.push(`### ${RAR[r]} (${g.length})`);
     for (const c of g) {
       const suffix = c.active ? "" : " (hors boosters)";
-      console.log(`  n°${c.n} ${c.name}${suffix}`);
-      lines.push(`- n°${c.n} ${c.name}${suffix}`);
+      console.log(`  ${noDe(c)} ${c.name}${suffix}${botDe(c)}`);
+      lines.push(`- ${noDe(c)} ${c.name}${suffix}${botDe(c)}`);
     }
     console.log("");
     lines.push("");
