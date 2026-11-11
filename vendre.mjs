@@ -16,8 +16,9 @@
 //   - un exemplaire déjà en vente ou dans un échange (« lock ») n'est jamais touché, et
 //     ne compte pas parmi ceux qu'on garde ;
 //   - le prix de référence est celui proposé par le jeu (valeur de la rareté, × 3 pour
-//     une holo), moins la remise, sans jamais descendre sous ce que rapporterait une
-//     défausse de la carte.
+//     une holo, la même pour toutes les générations), moins la remise, sans jamais
+//     descendre sous ce que rapporterait une défausse de la carte. Une remise négative
+//     est une majoration : --remise=-30 met en vente 30 % au-dessus de la référence.
 //
 // Baisse progressive (à chaque lancement, avant de créer les nouvelles annonces) :
 //   - une annonce de surplus restée sans acheteur depuis --palier heures (24 par défaut)
@@ -35,6 +36,9 @@
 //   REF_EMAIL=... REF_PASS=... node vendre.mjs      -> met en vente / baisse / défausse
 //   ... node vendre.mjs --dry                       -> n'affiche que ce qui serait fait
 //   ... node vendre.mjs --remise=40                 -> remise de départ en % (20 par défaut)
+//   ... node vendre.mjs --remise=-30                -> majoration : 30 % au-dessus de la référence
+//   ... node vendre.mjs --remise-gen2=-50           -> remise propre à une génération (--remise-gen1,
+//                                                      --remise-gen2), --remise pour les autres
 //   ... node vendre.mjs --baisse=15 --palier=12     -> baisse de 15 % toutes les 12 h
 //   ... node vendre.mjs --sans-defausse             -> ne défausse jamais rien
 //   ... node vendre.mjs --retirer                   -> retire toutes tes annonces ouvertes
@@ -61,7 +65,11 @@ const intArg = (nom, defaut, min, max) => {
   if (!Number.isInteger(v) || v < min || v > max) throw new Error(`--${nom} doit être un entier entre ${min} et ${max}`);
   return v;
 };
-const REMISE = intArg("remise", 20, 1, 90);
+// Négative, la remise devient une majoration (jusqu'à 6 fois le prix de référence).
+const REMISE = intArg("remise", 20, -500, 90);
+const REMISES = { 1: intArg("remise-gen1", REMISE, -500, 90), 2: intArg("remise-gen2", REMISE, -500, 90) };
+const remiseDe = (c) => REMISES[c?.gen || 1] ?? REMISE;
+const texteRemise = (r) => (r >= 0 ? `remise de ${r} %` : `majoration de ${-r} %`);
 const BAISSE = intArg("baisse", 10, 1, 90);
 const PALIER_H = intArg("palier", 24, 1, 24 * 30);
 
@@ -75,6 +83,12 @@ const GEN = genArg ? Number(genArg.split("=")[1]) : null;
 if (GEN !== null && GEN !== 1 && GEN !== 2) throw new Error("--gen attend 1 ou 2 (ex. --gen=2)");
 const genVisee = (c) => GEN === null || (!!c && (c.gen || 1) === GEN);
 const gensTexte = GEN === null ? "toutes" : `Gén. ${GEN}`;
+// Remises des générations traitées, pour les comptes rendus
+const remisesTexte = (() => {
+  const gens = GEN === null ? [1, 2] : [GEN];
+  const textes = gens.map((g) => texteRemise(REMISES[g]));
+  return new Set(textes).size === 1 ? textes[0] : gens.map((g, i) => `Gén. ${g} : ${textes[i]}`).join(", ");
+})();
 
 const NIVEAU_MAX = 5; // LVL_MAX dans cartes.js du site
 const GARDER = 1; // exemplaires disponibles conservés sur une carte qui peut encore monter
@@ -113,7 +127,7 @@ const RAR = {
 const ORDER = ["L", "E", "R", "C"];
 const mult = (holo) => (holo ? 3 : 1);
 const plancherDe = (r, holo) => RAR[r].discard * mult(holo);
-const prixDe = (r, holo) => Math.max(plancherDe(r, holo), Math.round((RAR[r].value * mult(holo) * (100 - REMISE)) / 100));
+const prixDe = (c, holo) => Math.max(plancherDe(c.rarity, holo), Math.round((RAR[c.rarity].value * mult(holo) * (100 - remiseDe(c))) / 100));
 const pasDe = (r, holo) => Math.max(1, Math.round((RAR[r].value * mult(holo) * BAISSE) / 100));
 
 const cards = Object.fromEntries((await fetchAll(() => sb.from("cards").select("id,name,rarity,n,gen").order("id"))).map((c) => [c.id, c]));
@@ -234,7 +248,7 @@ for (const l of await mesAnnonces()) {
   const avec = { holos: [...t.holos], simples: [...t.simples], enVente: t.enVente - 1 };
   (holo ? avec.holos : avec.simples).push(l.instance_id);
   const choix = choisir(avec, estNiveauMax(id));
-  if (!choix || choix.holo !== holo || l.price > prixDe(c.rarity, holo)) continue; // pas à nous de la toucher
+  if (!choix || choix.holo !== holo || l.price > prixDe(c, holo)) continue; // pas à nous de la toucher
 
   const plancher = plancherDe(c.rarity, holo);
   const auPlancher = l.price <= plancher;
@@ -282,7 +296,7 @@ for (const [id, t] of parCarte) {
   const c = cards[id];
   if (!genVisee(c)) continue;
   if (!RAR[c?.rarity]) { ignorees.push(c?.name || id); continue; }
-  const prix = prixDe(c.rarity, choix.holo);
+  const prix = prixDe(c, choix.holo);
   // Avec une grosse remise, le prix de départ tombe sur la valeur de défausse : on défausse direct.
   if (!SANS_DEFAUSSE && prix <= plancherDe(c.rarity, choix.holo)) { await defausser(c, choix.holo, t, null); continue; }
   aVendre.push({ ...c, ...choix, niveauMax, prix });
@@ -291,7 +305,7 @@ if (baissees.length || defaussees.length) console.log("");
 // La génération la plus récente d'abord.
 aVendre.sort((a, b) => (b.gen || 1) - (a.gen || 1) || ORDER.indexOf(a.rarity) - ORDER.indexOf(b.rarity) || a.n - b.n);
 
-console.log(`${me.pseudo} : ${aVendre.length} carte(s) à mettre en vente (1 annonce par carte), remise de ${REMISE} %, générations : ${gensTexte}.${DRY ? "  (DRY-RUN : rien ne sera fait)" : ""}\n`);
+console.log(`${me.pseudo} : ${aVendre.length} carte(s) à mettre en vente (1 annonce par carte), ${remisesTexte}, générations : ${gensTexte}.${DRY ? "  (DRY-RUN : rien ne sera fait)" : ""}\n`);
 
 for (const c of aVendre) {
   if (!DRY) {
@@ -309,7 +323,7 @@ const genre = (holo) => (holo ? "Holo" : "Normale");
 const L = [`# Ventes pour ${me.pseudo}`, "", new Date().toISOString(), ""];
 if (DRY) L.push("DRY-RUN : rien n'a été fait.", "");
 L.push(
-  `${vendues.length} carte(s) ${verbe} avec une remise de ${REMISE} %, pour ${total} K au total si tout part. Une annonce à la fois par carte.`,
+  `${vendues.length} carte(s) ${verbe} (${remisesTexte}), pour ${total} K au total si tout part. Une annonce à la fois par carte.`,
   "",
   `Générations traitées : ${gensTexte}.`,
   "",

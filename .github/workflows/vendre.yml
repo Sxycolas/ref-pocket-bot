@@ -2,15 +2,8 @@ name: Vente des doublons inutiles
 on:
   workflow_dispatch:
     inputs:
-      action:
-        description: "Mettre en vente, ou retirer des annonces"
-        type: choice
-        options:
-          - vendre
-          - retirer
-        default: vendre
       generation:
-        description: "Générations concernées, pour vendre comme pour retirer"
+        description: "Générations concernées"
         type: choice
         options:
           - toutes
@@ -18,8 +11,14 @@ on:
           - "2"
         default: toutes
       remise:
-        description: "Vendre : remise de départ en % par rapport au prix de référence"
+        description: "Vendre : remise de départ en % par rapport au prix de référence (négative = majoration, ex. -30)"
         default: "20"
+      remise_gen1:
+        description: "Vendre : remise propre à la Gén. 1 (vide = la remise ci-dessus)"
+        default: ""
+      remise_gen2:
+        description: "Vendre : remise propre à la Gén. 2 (vide = la remise ci-dessus, ex. -50)"
+        default: ""
       baisse:
         description: "Vendre : baisse en % du prix de référence, à chaque palier sans acheteur"
         default: "10"
@@ -30,9 +29,6 @@ on:
         description: "Vendre : défausser les cartes que personne n'achète, même à la valeur de défausse"
         type: boolean
         default: true
-      cartes:
-        description: "Retirer : numéros de carte séparés par des virgules (vide = toutes les annonces)"
-        default: ""
       dry:
         description: "Test à blanc : ne rien modifier"
         type: boolean
@@ -54,23 +50,21 @@ jobs:
           args=()
           if [ "$DRY" = "true" ]; then args+=(--dry); fi
           if [ "$GENERATION" = "1" ] || [ "$GENERATION" = "2" ]; then args+=("--gen=$GENERATION"); fi
-          if [ "$ACTION" = "retirer" ]; then
-            if [ -n "$CARTES" ]; then args+=("--retirer=$CARTES"); else args+=(--retirer); fi
-          else
-            args+=("--remise=$REMISE" "--baisse=$BAISSE" "--palier=$PALIER")
-            if [ "$DEFAUSSER" = "false" ]; then args+=(--sans-defausse); fi
-          fi
+          args+=("--remise=$REMISE" "--baisse=$BAISSE" "--palier=$PALIER")
+          if [ -n "$REMISE_GEN1" ]; then args+=("--remise-gen1=$REMISE_GEN1"); fi
+          if [ -n "$REMISE_GEN2" ]; then args+=("--remise-gen2=$REMISE_GEN2"); fi
+          if [ "$DEFAUSSER" = "false" ]; then args+=(--sans-defausse); fi
           npm run vendre -- "${args[@]}"
         env:
           REF_EMAIL: ${{ secrets.REF_EMAIL }}
           REF_PASS: ${{ secrets.REF_PASS }}
-          ACTION: ${{ inputs.action }}
           GENERATION: ${{ inputs.generation }}
           REMISE: ${{ inputs.remise || '20' }}
+          REMISE_GEN1: ${{ inputs.remise_gen1 }}
+          REMISE_GEN2: ${{ inputs.remise_gen2 }}
           BAISSE: ${{ inputs.baisse || '10' }}
           PALIER: ${{ inputs.palier || '24' }}
           DEFAUSSER: ${{ inputs.defausser }}
-          CARTES: ${{ inputs.cartes }}
           DRY: ${{ inputs.dry }}
       - run: cat ventes.md >> "$GITHUB_STEP_SUMMARY"
         if: always()

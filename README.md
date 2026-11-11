@@ -64,6 +64,7 @@ résumé du run et se télécharge en artefact.
 | Cartes manquantes | `cartes-manquantes.yml` |
 | Cartes en doublon | `doublons.yml` |
 | Vente des doublons inutiles | `vendre.yml` |
+| Retrait des annonces | `retirer.yml` |
 | Duels du jour contre le bot | `duels.yml` |
 
 ### 1. Activer les Actions sur ton fork
@@ -231,7 +232,9 @@ Comment ça se passe :
 
 - **Prix** : le prix de référence du jeu moins 20 %, sans descendre sous la valeur de défausse.
   Référence d'une normale : Commune 20 K, Rare 60 K, Épique 200 K, Légendaire 800 K (× 3 pour
-  une holo).
+  une holo), la même pour les deux générations. Une remise négative est une majoration :
+  `--remise=-30` vend 30 % au-dessus de la référence. `--remise-gen1` / `--remise-gen2` donnent
+  une remise propre à une génération, par exemple pour vendre la Gén. 2 plus cher.
 - **Une annonce à la fois par carte**, pour varier les offres. Quand elle est vendue, relance
   le script pour mettre en vente l'exemplaire suivant.
 - **Baisse progressive** : une annonce restée **24 h** sans acheteur est retirée et remise en
@@ -250,7 +253,9 @@ Comment ça se passe :
 ```bash
 npm run vendre -- --dry          # affiche ce qui serait vendu, sans rien faire
 npm run vendre                   # met en vente pour de vrai
-npm run vendre -- --remise=40    # change la remise de départ (entre 1 et 90 %)
+npm run vendre -- --remise=40    # change la remise de départ (jusqu'à 90 %)
+npm run vendre -- --remise=-30   # majoration : 30 % au-dessus de la référence
+npm run vendre -- --remise-gen2=-50   # Gén. 2 à 50 % au-dessus, Gén. 1 avec la remise habituelle
 npm run vendre -- --baisse=15 --palier=12   # baisse de 15 % toutes les 12 h sans acheteur
 npm run vendre -- --sans-defausse           # ne défausse jamais rien
 npm run vendre -- --retirer            # retire toutes tes annonces ouvertes
@@ -260,10 +265,16 @@ npm run vendre -- --gen=2              # seulement la Génération 2 (ou 1), com
 ```
 
 Sur GitHub Actions, le formulaire « Run workflow » de `vendre.yml` propose les mêmes choix :
-- **action** : `vendre` (par défaut) ou `retirer` ;
-- **generation** : `toutes` (par défaut), `1` ou `2`. Le choix s'applique aux annonces, aux baisses, aux défausses et aux retraits ;
-- **remise**, **baisse**, **palier**, **defausser** : les réglages de prix ci-dessus ;
-- **cartes** : pour `retirer`, les numéros séparés par des virgules (vide = toutes les annonces).
+
+- **generation** : `toutes` (par défaut), `1` ou `2`. Le choix s'applique aux annonces, aux baisses et aux défausses ;
+- **remise**, **remise_gen1**, **remise_gen2**, **baisse**, **palier**, **defausser** : les réglages de prix ci-dessus (les remises par génération vides reprennent **remise**) ;
+- **dry** : test à blanc.
+
+Les retraits ont leur propre workflow, `retirer.yml` :
+
+- **generation** : `toutes` (par défaut), `1` ou `2` ;
+- **cartes** : les numéros séparés par des virgules (vide = toutes les annonces) ;
+- **dry** : affiche ce qui serait retiré, sans rien faire.
 
 > ⚠️ Une carte en vente peut être achetée à tout moment par un autre joueur, et seule une annonce
 > encore ouverte peut être retirée. `--retirer` sans numéros retire **toutes** tes annonces, même
