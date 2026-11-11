@@ -118,6 +118,8 @@ function deck(coll, tri) {
   if (choix.length < DECK_SIZE) return null;
   return choix.map((id) => (coll.get(id).holo ? id + "*" : id));
 }
+// L'identifiant de la carte d'une entrée de deck, sans l'étoile finale de la holo
+const idDe = (x) => (x.endsWith("*") ? x.slice(0, -1) : x);
 // Gardées en mémoire entre les duels pour limiter les requêtes. null : à relire au prochain duel.
 let collections = null;
 // Reporte la carte prise au bot. Si elle a été jouée en holo, on ne sait pas quel exemplaire
@@ -141,9 +143,9 @@ async function decks() {
   const dBot = deck(sienne, (a, b) => (mienne.has(a.id) - mienne.has(b.id)) || (RORDER.indexOf(a.rarity) - RORDER.indexOf(b.rarity)) || (force(a) - force(b)));
   if (!dMoi) die(`Ton compte n'a pas ${DECK_SIZE} cartes différentes disponibles pour un deck.`);
   if (!dBot) die(`Le compte bot n'a pas ${DECK_SIZE} cartes différentes disponibles : ouvre ses boosters (boosters.mjs avec ses identifiants).`);
-  return { dMoi, dBot, mienne, nouvelles: dBot.filter((x) => !mienne.has(x.replace("*", ""))).length };
+  return { dMoi, dBot, mienne, nouvelles: dBot.filter((x) => !mienne.has(idDe(x))).length };
 }
-const affiche = (d) => d.map((x) => `${nomDe(x.replace("*", ""))}${x.endsWith("*") ? " ✨" : ""}`).join(", ");
+const affiche = (d) => d.map((x) => `${nomDe(idDe(x))}${x.endsWith("*") ? " ✨" : ""}`).join(", ");
 
 // ---------- Duels déjà ouverts entre les deux comptes (run précédent interrompu) ----------
 async function nettoyer() {
