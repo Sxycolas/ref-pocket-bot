@@ -1,6 +1,15 @@
 name: Booster horaire
 on:
   workflow_dispatch:
+    inputs:
+      generation:
+        description: "Génération des boosters à ouvrir (toutes = la Gén. 2 d'abord)"
+        type: choice
+        options:
+          - toutes
+          - "1"
+          - "2"
+        default: toutes
 
 jobs:
   open:
@@ -10,6 +19,8 @@ jobs:
     timeout-minutes: 3
     env:
       HAS_BOT: ${{ secrets.BOT_EMAIL != '' }}
+      # Vide (toutes les générations) ou --gen=1 / --gen=2
+      GEN_ARG: ${{ (inputs.generation == '1' || inputs.generation == '2') && format('--gen={0}', inputs.generation) || '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -17,7 +28,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: node boosters.mjs
+      - run: node boosters.mjs $GEN_ARG
         env:
           REF_EMAIL: ${{ secrets.REF_EMAIL }}
           REF_PASS: ${{ secrets.REF_PASS }}
@@ -25,7 +36,7 @@ jobs:
       - name: Boosters du bot
         if: ${{ env.HAS_BOT == 'true' }}
         continue-on-error: true
-        run: node boosters.mjs
+        run: node boosters.mjs $GEN_ARG
         env:
           REF_EMAIL: ${{ secrets.BOT_EMAIL }}
           REF_PASS: ${{ secrets.BOT_PASS }}

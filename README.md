@@ -134,7 +134,8 @@ Quelques exemples :
 |---|---|
 | Vendre la Gén. 1 à -20 % et la Gén. 2 à +100 %, avec une baisse de 10 % tous les 2 jours | `{"ref":"main","inputs":{"remise_gen1":"20","remise_gen2":"-100","baisse":"10","palier":"48"}}` |
 | Vendre sans jamais rien défausser | `{"ref":"main","inputs":{"defausser":"false"}}` |
-| N'améliorer que la Gén. 2 | `{"ref":"main","inputs":{"generation":"2"}}` |
+| N'ouvrir que des boosters de Gén. 1 (`booster.yml`) | `{"ref":"main","inputs":{"generation":"1"}}` |
+| N'améliorer que la Gén. 2 (`ameliore.yml`) | `{"ref":"main","inputs":{"generation":"2"}}` |
 | Ne pas améliorer les communes | `{"ref":"main","inputs":{"communes":"false"}}` |
 
 Tous les réglages possibles sont décrits dans la section suivante.
@@ -154,7 +155,7 @@ ouverts aussi.
 
 | Sur GitHub / cron-job.org | En local | Effet |
 |---|---|---|
-| — | `--gen=1` ou `--gen=2` | n'ouvre que cette génération |
+| `generation` : `"toutes"`, `"1"`, `"2"` | `--gen=1` ou `--gen=2` | n'ouvre que cette génération |
 
 ### Améliorer les cartes
 
