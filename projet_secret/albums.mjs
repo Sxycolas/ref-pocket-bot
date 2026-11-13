@@ -2,12 +2,13 @@
 //
 //   node projet_secret/albums.mjs --email=adresse@exemple.com --password='mot_de_passe'
 //
-// La sortie standard ne contient que le JSON : les erreurs partent sur la sortie d'erreur.
+// La sortie standard ne contient que le JSON : les logs et les erreurs partent sur la sortie d'erreur.
 
 import { ouvrirSession } from "../session.mjs";
 
+const log = (...a) => console.error(new Date().toISOString(), ...a);
 const stop = (msg) => {
-  console.error(msg);
+  log(msg);
   process.exit(1);
 };
 const option = (nom) =>
@@ -22,6 +23,7 @@ if (error) stop(`Connexion impossible : ${error.message}`);
 
 const me = (await sb.rpc("my_profile")).data;
 if (!me?.id) stop("Profil introuvable.");
+log(`Récupération des albums de ${me.pseudo}.`);
 
 async function fetchAll(build) {
   const out = [];
@@ -40,6 +42,8 @@ const instances = await fetchAll(() =>
 );
 const claims = await fetchAll(() => sb.from("album_claims").select("album").eq("owner", me.id).order("album"));
 
+log(`${catalogue.length} cartes au catalogue, ${instances.length} cartes possédées, ${claims.length} albums déjà réclamés.`);
+
 const possedees = new Set(instances.map((i) => i.card_id));
 const dejaReclames = new Set(claims.map((c) => c.album));
 
@@ -56,10 +60,22 @@ for (const gen of [1, 2]) {
 
 const reclames = [];
 for (const { cle, cartes } of albums) {
-  if (dejaReclames.has(cle) || !cartes.every((c) => possedees.has(c.id))) continue;
+  if (dejaReclames.has(cle)) {
+    log(`Album ${cle} : déjà réclamé.`);
+    continue;
+  }
+  const manquantes = cartes.filter((c) => !possedees.has(c.id)).length;
+  if (manquantes) {
+    log(`Album ${cle} : incomplet (${manquantes}/${cartes.length} cartes manquantes).`);
+    continue;
+  }
   const r = await sb.rpc("claim_album", { p_type: cle });
-  if (r.error) console.error(`Album ${cle} refusé : ${r.error.message}`);
-  else reclames.push({ album: cle, kheys: r.data });
+  if (r.error) log(`Album ${cle} refusé : ${r.error.message}`);
+  else {
+    reclames.push({ album: cle, kheys: r.data });
+    log(`Album ${cle} : réclamé, ${r.data} K.`);
+  }
 }
+log(`Terminé : ${reclames.length} album(s) réclamé(s).`);
 
 console.log(JSON.stringify(reclames));

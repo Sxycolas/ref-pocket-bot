@@ -85,7 +85,7 @@ def rapatrier(joueur, principal, gen, adversaire=None):
                 principal["email"], principal["password"],
             )
     except subprocess.CalledProcessError:
-        print(f"Échec pour {_masque(joueur['email'])} : il sera retenté au prochain lancement.")
+        print(f"Échec pour {joueur['pseudo']} : il sera retenté au prochain lancement.")
 
 
 def creer_compte(email, pseudo=None, password=None, gen=2):
@@ -124,11 +124,12 @@ def ouvrir_boosters(email, password, gen):
     )
 
 
-def transferer(email_source, password_source, email, password, completer=None):
+def transferer(email_source, password_source, email, password, completer=None, uniques=False):
     """Transfère cartes et Kheys du compte source vers le compte (email, password).
 
     completer : si indiqué, envoie seulement les cartes qui manquent à la destination pour
     avoir ce nombre de cartes différentes jouables en deck, sans les Kheys.
+    uniques : si vrai, envoie une seule instance de chaque carte différente (pas les doublons).
     Lève CalledProcessError si le script échoue.
     """
     commande = [
@@ -141,6 +142,8 @@ def transferer(email_source, password_source, email, password, completer=None):
     ]
     if completer is not None:
         commande.append(f"--completer={completer}")
+    if uniques:
+        commande.append("--uniques")
     _lancer(commande)
 
 
@@ -210,7 +213,7 @@ def jouer_duels(
             restants = duels_restants(email, password)
             duels = restants if nombre is None else min(nombre, restants)
             if duels == 0:
-                print(f"Plus de duel récompensé aujourd'hui pour {_masque(email)} : aucun prêt de cartes.")
+                print(f"Plus de duel récompensé aujourd'hui pour {_pseudo(email)} : aucun prêt de cartes.")
                 return
 
             # Le bot perd une carte par duel et doit encore avoir un deck complet au dernier.
@@ -237,11 +240,14 @@ def jouer_duels(
                 try:
                     transferer(email_joueur, password_joueur, email_principal, password_principal)
                 except subprocess.CalledProcessError:
-                    print(f"Renvoi impossible depuis {_masque(email_joueur)} : ses cartes sont restées sur ce compte.")
+                    print(f"Renvoi impossible depuis {_pseudo(email_joueur)} : ses cartes sont restées sur ce compte.")
 
 
-def _masque(email):
-    """Renvoie un e-mail tronqué, pour les messages qui finissent dans des logs publics."""
+def _pseudo(email):
+    """Renvoie le pseudo du compte de compte-auto.json, ou l'e-mail tronqué s'il n'y figure pas."""
+    for compte in lire_comptes():
+        if compte["email"] == email:
+            return compte["pseudo"]
     return f"{email[:3]}***"
 
 
@@ -287,7 +293,7 @@ if __name__ == "__main__":
 
     principal = joueurs[0]
     email_principal, password_principal = principal["email"], principal["password"]
-    print("Compte principal :", _masque(email_principal), "| comptes repris :", len(joueurs))
+    print("Compte principal :", principal['pseudo'], "| comptes repris :", len(joueurs))
 
     cartes_manquantes_gen2, cartes_gen2 = cartes_compte(email_principal, password_principal, 2)
     if cartes_manquantes_gen2 > 0:
@@ -333,14 +339,29 @@ if __name__ == "__main__":
 
     ### ETAPE 3 : récupérer les récompenses des albums complétés et non réclamés des comptes
 
-    for joueur in joueurs:
+
+    for i in range(len(joueurs)):
+        joueur = joueurs[i]
+        joueur_suivant = joueurs[i + 1] if i + 1 < len(joueurs) else None
         try:
+            print(f"Récupération des récompenses des albums pour {joueur['pseudo']}...")
             recompenses = recuperer_albums(joueur["email"], joueur["password"])
+            if joueur_suivant:
+                transferer(
+                    joueur["email"], joueur["password"], joueur_suivant["email"], joueur_suivant["password"], uniques=True
+                )
         except subprocess.CalledProcessError:
-            print(f"Albums illisibles pour {_masque(joueur['email'])} : compte ignoré.")
+            print(f"Albums illisibles pour {joueur['pseudo']} : compte ignoré.")
             continue
-        if joueur is not principal:
-            rapatrier(joueur, principal, gen)
+
+    # La chaîne a rassemblé les cartes uniques sur le dernier joueur : tout retourne au compte principal
+    if len(joueurs) > 1:
+        dernier = joueurs[-1]
+        try:
+            print(f"Retour de tout vers le compte principal depuis {dernier['pseudo']}...")
+            transferer(dernier["email"], dernier["password"], email_principal, password_principal)
+        except subprocess.CalledProcessError:
+            print(f"Retour impossible depuis {dernier['pseudo']}.")
 
     print("FINI ! Nombre de comptes créés :", len(joueurs))
     fin = cartes_compte(email_principal, password_principal)

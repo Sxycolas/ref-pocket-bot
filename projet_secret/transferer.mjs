@@ -8,6 +8,9 @@
 //
 // Avec --completer=N, seules les cartes qui manquent à la destination pour avoir N cartes
 // différentes jouables en deck sont envoyées, les moins rares d'abord, et sans les Kheys.
+//
+// Avec --uniques, une seule instance de chaque carte différente est envoyée (pas les doublons),
+// ce qui suffit pour compléter les albums. Les Kheys sont envoyés comme d'habitude.
 
 import { ouvrirSession } from "../session.mjs";
 
@@ -38,6 +41,9 @@ const completer = option("completer") === undefined ? null : Number(option("comp
 if (completer !== null && (!Number.isInteger(completer) || completer < 1)) {
   stop("--completer doit être un entier positif.");
 }
+
+const uniques = process.argv.includes("--uniques");
+if (uniques && completer !== null) stop("--uniques et --completer sont incompatibles.");
 
 async function connecter(email, password) {
   const masque = `${email.slice(0, 3)}***`; // ces messages peuvent finir dans des logs publics
@@ -141,7 +147,17 @@ async function cartesACompleter(disponibles) {
 
 const cartes = await cartesDe(source);
 const disponibles = cartes.filter((c) => !c.lock);
-const aEnvoyer = completer === null ? disponibles.map((c) => c.id) : await cartesACompleter(disponibles);
+// Une instance par carte différente, en gardant la moins précieuse (non holo d'abord)
+const uniquesDe = (liste) => {
+  const parCarte = new Map();
+  for (const c of [...liste].sort((a, b) => a.holo - b.holo || a.id - b.id)) {
+    if (!parCarte.has(c.card_id)) parCarte.set(c.card_id, c.id);
+  }
+  return [...parCarte.values()];
+};
+const aEnvoyer = completer !== null
+  ? await cartesACompleter(disponibles)
+  : uniques ? uniquesDe(disponibles) : disponibles.map((c) => c.id);
 const kheys = completer === null ? (source.me.kheys ?? 0) : CONTREPARTIE;
 const bloquees = cartes.length - disponibles.length;
 
